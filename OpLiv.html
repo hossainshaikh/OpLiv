@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#080B14">
+<title>OpLiv — Home Energy Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{font-family:'DM Sans',sans-serif;background:#080B14;color:#E8EAF0}
+#root{height:100%;overflow:hidden}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:2px}
+input,button{font-family:'DM Sans',sans-serif}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes glow{0%,100%{box-shadow:0 0 20px #00D4A820}50%{box-shadow:0 0 40px #00D4A840}}
+.fade-up{animation:fadeUp 0.35s ease both}
+.fade-in{animation:fadeIn 0.25s ease both}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+
+const {useState,useEffect,useRef,useCallback,useMemo} = React;
+
+// ─── DESIGN TOKENS ───────────────────────────────────────────────────────────
+const T = {
+  bg:'#080B14', s1:'#0E1420', s2:'#141B2D', s3:'#1A2238',
+  b1:'rgba(255,255,255,0.06)', b2:'rgba(255,255,255,0.11)',
+  t1:'#E8EAF0', t2:'#8892A4', t3:'#3D4A5C',
+  cyan:'#00D4A8', amber:'#F59E0B', purple:'#6366F1',
+  green:'#10B981', red:'#EF4444', blue:'#3B82F6',
+  font:"'DM Sans',sans-serif", mono:"'Space Mono',monospace"
+};
+
+// ─── DEVICE LIBRARY DATA ─────────────────────────────────────────────────────
+const DEVICES = [
+  // SOLAR
+  {id:'s1',name:'Huawei',cat:'Solar',sub:'Hybrid Inverter',models:['SUN2000-3/5/6/8/10KTL-M2','SUN2000-12/15/20KTL-M2','SUN2000-100KTL-H1'],protocol:'Modbus TCP + FusionSolar REST',logo:'🟥',region:'Global',color:'#EF4444',fields:[{l:'Plant ID',t:'text',p:'e.g. NE=123456789'},{l:'FusionSolar Username',t:'text',p:'Portal login'},{l:'API Password',t:'password',p:'System generated'},{l:'Inverter Local IP',t:'text',p:'192.168.x.x'}],tip:'Enable Modbus in Settings > Comm > RS485. Port 502.',features:['Real-time kW','Daily kWh','Grid export','Battery SOC','Fault alerts']},
+  {id:'s2',name:'Sungrow',cat:'Solar',sub:'Hybrid Inverter',models:['SH3K6/5K/6K/8K/10K-30','SH5.0/6.0/8.0/10RT-V112','SH10/15/20/25RT'],protocol:'Modbus TCP + iSolarCloud REST',logo:'🟧',region:'Global',color:'#F97316',fields:[{l:'iSolarCloud App Key',t:'text',p:'Developer portal'},{l:'App Secret',t:'password',p:''},{l:'Device Serial',t:'text',p:'e.g. A2220000000'},{l:'Local IP',t:'text',p:'192.168.x.x'}],tip:'Enable local Modbus via iSolarCloud app > Device > Communication.',features:['Solar production','Battery management','Export limiting','EV control']},
+  {id:'s3',name:'SolarEdge',cat:'Solar',sub:'String + Optimizer',models:['SE3000H/SE5000H/SE7000H','SE10000H/SE17K/SE25K','SE100K/SE150K'],protocol:'SolarEdge Monitoring REST + Modbus',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'Site ID',t:'text',p:'From monitoring portal'},{l:'API Key',t:'text',p:'Settings > API Access'},{l:'Inverter IP (Modbus)',t:'text',p:'192.168.x.x'}],tip:'Generate API key at monitoring.solaredge.com > Admin > API Access.',features:['Per-panel monitoring','Optimizer data','StorEdge battery','Revenue metering']},
+  {id:'s4',name:'SMA',cat:'Solar',sub:'Hybrid & String',models:['Sunny Boy 3.0–6.0','Sunny Tripower 10–25','Sunny Home Manager 2.0'],protocol:'SMA Speedwire + Sunny Portal REST',logo:'⬜',region:'Global',color:'#6B7280',fields:[{l:'Sunny Portal Username',t:'text',p:'Email'},{l:'Sunny Portal Password',t:'password',p:''},{l:'Plant ID',t:'text',p:'From portal URL'},{l:'Local IP',t:'text',p:'192.168.x.x'}],tip:'Enable Speedwire via WebConnect interface on the inverter.',features:['Grid feed-in management','Battery integration','Home Manager','Weather forecast']},
+  {id:'s5',name:'Growatt',cat:'Solar',sub:'Hybrid Inverter',models:['MIN 2500-6000TL-XH','SPH3000-10000TL BL-UP','MOD 3000-15000TL3-XH'],protocol:'Modbus RTU/TCP + ShineServer REST',logo:'🟩',region:'Global / Asia',color:'#10B981',fields:[{l:'Plant ID',t:'text',p:'From ShineServer'},{l:'ShineServer Token',t:'text',p:'From account'},{l:'Serial Number',t:'text',p:'e.g. QAL0B00000'},{l:'Local IP',t:'text',p:'192.168.x.x'}],tip:'Set Modbus address to 1 on inverter LCD. Default port 502.',features:['Solar yield','Battery control','Export control','TOU charging']},
+  {id:'s6',name:'Fronius',cat:'Solar',sub:'Hybrid Inverter',models:['Fronius Primo 3.0–15.0','Fronius Symo 3.0–25.0','Fronius Gen24 Plus 3–10kW'],protocol:'Fronius Solar API v1 (local HTTP) + Modbus',logo:'🟥',region:'Global',color:'#EF4444',fields:[{l:'Inverter IP',t:'text',p:'192.168.x.x'},{l:'Device ID',t:'text',p:'Usually 1'}],tip:'Solar API enabled by default. Access via http://[IP]/solar_api/v1/',features:['Real-time power','Energy yield','Ohmpilot integration','Battery management']},
+  {id:'s7',name:'Deye / Sunsynk',cat:'Solar',sub:'Hybrid Inverter',models:['SUN-3/5/8/12K-SG04LP3','SUN-5/8/12K-SG03LP1','Sunsynk 3.6/5K'],protocol:'Modbus TCP + SolarmanPV REST',logo:'🟧',region:'Global / MEA',color:'#F97316',fields:[{l:'Logger Serial',t:'text',p:'From Wi-Fi stick'},{l:'SolarmanPV App ID',t:'text',p:'Developer account'},{l:'App Secret',t:'password',p:''},{l:'Local IP',t:'text',p:'192.168.x.x'}],tip:'Widely used in UAE and South Africa. Enable SolarmanPV for cloud.',features:['Hybrid control','Battery scheduling','Load control','Generator input']},
+  {id:'s8',name:'Victron Energy',cat:'Solar',sub:'Off-Grid / Hybrid',models:['MultiPlus-II 3–15kVA','Quattro 5–15kVA','BlueSolar MPPT','Cerbo GX'],protocol:'VE.Bus / Modbus TCP + VRM REST',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'VRM Installation ID',t:'text',p:'vrm.victronenergy.com'},{l:'VRM Access Token',t:'text',p:'Profile > API tokens'},{l:'Cerbo GX IP',t:'text',p:'192.168.x.x'}],tip:'Very popular in MEA for off-grid. Cerbo GX is the communication hub.',features:['Off-grid capable','Generator auto-start','ESS energy storage','Full BMS']},
+  {id:'s9',name:'GoodWe',cat:'Solar',sub:'Hybrid Inverter',models:['GW3648-EM/GW5048-EM','GW5000-ET/GW8000-ET','GW10K-ET/GW15K-ET'],protocol:'Modbus TCP + SEMS Portal REST',logo:'🟩',region:'Global / Asia',color:'#10B981',fields:[{l:'SEMS Station ID',t:'text',p:'From SEMS portal'},{l:'SEMS Account',t:'text',p:'Email'},{l:'SEMS Password',t:'password',p:''}],tip:'Enable Modbus via SEMS app > Device Settings > Communication.',features:['EPS off-grid','Battery management','PV yield','Smart meter']},
+  {id:'s10',name:'SolaX Power',cat:'Solar',sub:'Hybrid Inverter',models:['X1-Hybrid G4 3–6kW','X3-Hybrid G4 5–15kW','X3-MegaPack 30–80kW'],protocol:'SolaX Cloud REST + Modbus TCP',logo:'🟧',region:'Global',color:'#F97316',fields:[{l:'Registration Code',t:'text',p:'From SolaX Cloud'},{l:'Serial Number',t:'text',p:'From inverter label'},{l:'API Token',t:'text',p:'Developer portal'}],tip:'Get token from SolaX Cloud developer page. Local port 502.',features:['Cloud monitoring','Battery control','Force charge/discharge','Grid export control']},
+  // BATTERIES
+  {id:'b1',name:'Tesla',cat:'Battery',sub:'Home Battery',models:['Powerwall 2 (13.5 kWh)','Powerwall 3 (13.5 kWh)','Powerwall+'],protocol:'Tesla Owner API + Local Gateway',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'Tesla Account Email',t:'text',p:'Your Tesla account'},{l:'Tesla Password',t:'password',p:''},{l:'Gateway IP',t:'text',p:'192.168.91.1 (default)'}],tip:'Gateway is at 192.168.91.1 when connected to Powerwall WiFi.',features:['Storm watch','Time-based control','Backup reserve','Self-powered mode','VPP']},
+  {id:'b2',name:'BYD',cat:'Battery',sub:'LFP Home Battery',models:['Battery-Box Premium HVS 5.1–12.8kWh','Battery-Box Premium HVM 8.3–22.1kWh','LV Flex Lite 2.56kWh'],protocol:'CAN bus / RS485 Modbus + BYD Cloud',logo:'🟦',region:'Global',color:'#1D4ED8',fields:[{l:'Battery Modbus Address',t:'text',p:'Usually 1'},{l:'BYD Serial Number',t:'text',p:'From label'},{l:'Connected Inverter',t:'text',p:'e.g. SMA, Fronius'}],tip:'BYD communicates via CAN/RS485 to inverter. OpLiv reads through inverter API.',features:['LFP chemistry safe','10-year warranty','Stackable','Compatible 15+ inverters']},
+  {id:'b3',name:'Pylontech',cat:'Battery',sub:'LFP Rack Battery',models:['US2000C (2.4 kWh)','US3000C (3.5 kWh)','US5000 (4.8 kWh)','Force H1 (14.2 kWh)'],protocol:'CAN bus / RS485 Modbus (BMS)',logo:'🟩',region:'Global / MEA',color:'#10B981',fields:[{l:'CAN/RS485 Address',t:'text',p:'Usually 1'},{l:'Battery Count',t:'text',p:'e.g. 4 stacked'},{l:'Connected Inverter',t:'text',p:'e.g. Victron, Growatt'}],tip:'Very popular in UAE/India for budget off-grid. Stack up to 8 units.',features:['LFP safe chemistry','Stackable 2–46 kWh','Wide inverter support','Built-in BMS']},
+  {id:'b4',name:'EcoFlow',cat:'Battery',sub:'Portable / Home Battery',models:['DELTA Pro (3.6kWh)','DELTA Pro Ultra (6kWh)','PowerOcean 5–15kWh'],protocol:'EcoFlow Cloud REST + Local LAN',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'EcoFlow Email',t:'text',p:'App account'},{l:'EcoFlow Password',t:'password',p:''},{l:'Device SN',t:'text',p:'From label or app'}],tip:'Enable LAN control in EcoFlow app for local control without cloud.',features:['Portable + permanent','X-Stream fast charge','Solar input 2400W','App ecosystem']},
+  {id:'b5',name:'Alpha ESS',cat:'Battery',sub:'All-in-One Storage',models:['SMILE5 5kW/10.1kWh','STORION-S5','Smile-BAT 5.7kWh Module'],protocol:'Modbus TCP + Alpha Cloud REST',logo:'🟧',region:'Global / Asia',color:'#F97316',fields:[{l:'Alpha Cloud Username',t:'text',p:'Email'},{l:'Password',t:'password',p:''},{l:'System SN',t:'text',p:'From device label'},{l:'Local IP',t:'text',p:'192.168.x.x'}],tip:'Built-in inverter. Enable Modbus via web interface.',features:['All-in-one system','Cloud monitoring','Load shifting','Backup power']},
+  // EV CHARGERS
+  {id:'e1',name:'Wallbox',cat:'EV',sub:'Smart EV Charger',models:['Pulsar Plus 7.4kW','Commander 2 22kW','Quasar 2 V2H bidirectional'],protocol:'Local REST + myWallbox Cloud + OCPP 1.6J',logo:'🟩',region:'Global',color:'#10B981',fields:[{l:'myWallbox Email',t:'text',p:'Account email'},{l:'Password',t:'password',p:''},{l:'Charger Serial',t:'text',p:'From label/app'},{l:'Local IP',t:'text',p:'192.168.x.x'}],tip:'Enable Eco-Smart mode for solar-aware charging in the myWallbox app.',features:['Solar charging','Scheduled charging','Load balancing','V2H (Quasar)']},
+  {id:'e2',name:'ABB Terra',cat:'EV',sub:'Commercial EV Charger',models:['Terra AC W11/22kW','Terra DC 24/50kW','Terra 184 HPC 180kW'],protocol:'OCPP 1.6/2.0 + ABB Ability REST',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'OCPP Backend URL',t:'text',p:'wss://ocpp.opliv.io (auto)'},{l:'Charger ID',t:'text',p:'From charger config'}],tip:'ABB uses OCPP. OpLiv acts as OCPP backend for full control.',features:['OCPP standard','Dynamic load management','Revenue metering','Fleet control']},
+  {id:'e3',name:'Schneider EVlink',cat:'EV',sub:'Smart EV Charger',models:['EVlink Home Smart 7.4kW','EVlink Pro AC 22kW','EVlink DC 24/50kW'],protocol:'OCPP 1.6 + EVlink REST + Modbus TCP',logo:'🟩',region:'Global',color:'#10B981',fields:[{l:'Cloud Username',t:'text',p:'EcoStruxure account'},{l:'Password',t:'password',p:''},{l:'Charger IP',t:'text',p:'192.168.x.x'}],tip:'EcoStruxure EV Charging Expert for fleet. Home via local REST.',features:['Smart grid ready','OCPP compliant','Power sharing','Solar integration']},
+  {id:'e4',name:'KEBA',cat:'EV',sub:'Smart EV Charger',models:['KeContact P30 a-series 3.7–22kW','KeContact P30 c-series 22kW'],protocol:'UDP KeContact + Modbus TCP + OCPP',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'Charger IP',t:'text',p:'192.168.x.x'},{l:'UDP Port',t:'text',p:'7090 (default)'}],tip:'KEBA uses UDP protocol. No cloud account needed for local control.',features:['UDP local control','Solar charging','Load balancing','RFID access']},
+  {id:'e5',name:'Easee',cat:'EV',sub:'Smart EV Charger',models:['Easee Home 7.4kW','Easee Charge 22kW','Easee Core 22kW'],protocol:'Easee REST + SignalR WebSocket',logo:'🟧',region:'Global',color:'#F97316',fields:[{l:'Easee Username',t:'text',p:'Email'},{l:'Password',t:'password',p:''},{l:'Charger ID',t:'text',p:'e.g. EH123456'}],tip:'Solar charging via smart charging profile in Easee portal.',features:['Solar charging','Dynamic load','Cost-based charging','Energy reporting']},
+  {id:'e6',name:'ChargePoint',cat:'EV',sub:'Network EV Charger',models:['Home Flex 50A','CPF25 L2 Commercial','CPE250 DC 62.5kW'],protocol:'ChargePoint REST + OCPP 1.6',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'ChargePoint API Key',t:'text',p:'developer.chargepoint.com'},{l:'Station ID',t:'text',p:'From dashboard'}],tip:'Register at developer.chargepoint.com for API access.',features:['Network connected','Reservations','Energy tracking','Fleet management']},
+  // GENERATORS
+  {id:'g1',name:'Cummins',cat:'Generator',sub:'Diesel Generator',models:['C17D6R 17kVA','C22D6R 22kVA','C33D6R 33kVA','C100D5 100kVA','C250D5 250kVA'],protocol:'Modbus RTU PowerCommand + PCCNET Ethernet',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'PowerCommand Panel IP',t:'text',p:'192.168.x.x'},{l:'Modbus Address',t:'text',p:'Usually 1'},{l:'Username',t:'text',p:'Administrator'},{l:'Password',t:'password',p:''}],tip:'Enable PCCNET in PowerCommand HMI. Requires PCCNET interface card.',features:['Auto start/stop','Fuel monitor','Run hours','Transfer switch','Remote start']},
+  {id:'g2',name:'Caterpillar (CAT)',cat:'Generator',sub:'Diesel / Gas Generator',models:['C1.5 22kVA','DE22E2 22kVA','C4.4 100kVA','C7.1 200kVA','C13 350kVA'],protocol:'Modbus RTU EMCP 4.4 + Cat Connect REST',logo:'🟧',region:'Global',color:'#F59E0B',fields:[{l:'EMCP Panel IP',t:'text',p:'192.168.x.x'},{l:'Cat Connect Username',t:'text',p:'dealer.cat.com'},{l:'Modbus Slave ID',t:'text',p:'1'}],tip:'EMCP 4.4 required for Modbus. Older EMCP 3.x needs RS485 adapter.',features:['EMCP 4.4 controller','Fleet management','Auto transfer','Remote diagnostics']},
+  {id:'g3',name:'Perkins',cat:'Generator',sub:'Diesel Generator',models:['1103A-33G 22kVA','1104A-44TG1 50kVA','1106A-70TAG3 100kVA'],protocol:'Modbus RTU + ComAp InteliGen controller',logo:'🟦',region:'Global / MEA',color:'#1D4ED8',fields:[{l:'ComAp Controller IP',t:'text',p:'192.168.x.x'},{l:'Modbus Address',t:'text',p:'1'},{l:'Controller Password',t:'password',p:''}],tip:'Perkins engines paired with ComAp, Deep Sea, or Woodward controllers.',features:['Auto mains failure','Load sharing','Fuel management','Paralleling']},
+  {id:'g4',name:'Kohler',cat:'Generator',sub:'Diesel / Gas Generator',models:['14RESAL 14kW','20RCLB 20kW','38RCLB 38kW','80RCLB 80kW'],protocol:'Modbus RTU Decision-Maker 3500 + Kohler APM',logo:'🟥',region:'Global',color:'#EF4444',fields:[{l:'Decision-Maker IP',t:'text',p:'192.168.x.x'},{l:'Modbus Address',t:'text',p:'1'},{l:'Kohler APM Account',t:'text',p:'Email'}],tip:'Decision-Maker 3500 controller supports Modbus natively.',features:['Auto transfer switch','Load management','Remote monitoring','Predictive maintenance']},
+  {id:'g5',name:'Kirloskar',cat:'Generator',sub:'Diesel Generator (India)',models:['KG1-20S 15kVA','KG1-30S 30kVA','KG1-62.5S 62.5kVA','KG1-100S 100kVA'],protocol:'Modbus RTU via Deep Sea / Lovato',logo:'🟩',region:'India / MEA',color:'#10B981',fields:[{l:'Controller Type',t:'text',p:'Deep Sea 7320 / Lovato'},{l:'Controller IP',t:'text',p:'192.168.x.x'},{l:'Modbus Address',t:'text',p:'1'}],tip:'Leading genset brand in India. Most use Deep Sea Electronics controllers.',features:['Auto start AMF','Load sharing','Fuel monitoring','Remote start']},
+  // HVAC
+  {id:'h1',name:'Daikin',cat:'HVAC',sub:'Split / VRF System',models:['Stylish FTXA25/35/42/50AW','Emura FTXJ25/35/50MW','VRV 5 Heat Pump','Sky Air Commercial'],protocol:'Daikin Online Controller REST + BACnet',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'Daikin Controller IP',t:'text',p:'192.168.x.x'},{l:'BRP069 Adapter ID',t:'text',p:'From controller label'},{l:'Cloud Username',t:'text',p:'Daikin app account'}],tip:'BRP069B adapter required per indoor unit for local API.',features:['Intelligent Eye','Coanda airflow','Streamer purification','Econo mode']},
+  {id:'h2',name:'Mitsubishi Electric',cat:'HVAC',sub:'Split / VRF System',models:['MSZ-LN25VG2 Premium','MSZ-EF35VGK Design','MXZ-3F68VF Multi-split','City Multi VRF'],protocol:'MELCloud REST + MAC-568IF-E interface',logo:'🟥',region:'Global',color:'#EF4444',fields:[{l:'MELCloud Username',t:'text',p:'Email'},{l:'MELCloud Password',t:'password',p:''},{l:'Device ID',t:'text',p:'From MELCloud app'}],tip:'MAC-568IF-E adapter per indoor unit for cloud connection.',features:['Dual Barrier coating','Jet airflow','i-see Sensor','Hyper Heating']},
+  {id:'h3',name:'LG Electronics',cat:'HVAC',sub:'Split / Multi / VRF',models:['Artcool Mirror A09FT','Artcool Gallery','Multi F 3–5 zone','Multi V 5 VRF'],protocol:'LG ThinQ REST + AC Smart Controller',logo:'🟥',region:'Global',color:'#EF4444',fields:[{l:'ThinQ Email',t:'text',p:'LG account'},{l:'ThinQ Password',t:'password',p:''},{l:'Device Serial',t:'text',p:'From ThinQ app'}],tip:'Requires Wi-Fi module (PWFMDD200) or LG Smart ThinQ dongle.',features:['AI Energy monitoring','Auto cleaning','Dual Inverter','Energy dashboard']},
+  {id:'h4',name:'Gree',cat:'HVAC',sub:'Split / Cassette / VRF',models:['Sapphire 9/12/18/24K BTU','Fairy 9/12/18K','FLEXX 18/24K','GMV6 VRF'],protocol:'Gree+ REST (EWPE Smart) + Modbus via GW-04',logo:'🟩',region:'Global / Asia',color:'#10B981',fields:[{l:'EWPE Smart Username',t:'text',p:'Gree+ app email'},{l:'EWPE Password',t:'password',p:''},{l:'Device MAC',t:'text',p:'From unit or app'}],tip:'Largest AC manufacturer globally. GW-04 gateway for Modbus. Very common in MEA.',features:['I-Feel temperature','Auto clean','Cold plasma','Wi-Fi control']},
+  {id:'h5',name:'Midea',cat:'HVAC',sub:'Split / Ducted / VRF',models:['MSG-09/12/18/24HRN8','All Easy Pro 9–24K','MCA-V VRF','M-Thermal Heat Pump'],protocol:'Midea LAN + MSmartHome REST + Modbus',logo:'🟦',region:'Global / Asia',color:'#3B82F6',fields:[{l:'MSmartHome Email',t:'text',p:'Midea account'},{l:'Password',t:'password',p:''},{l:'Device ID',t:'text',p:'From app'}],tip:'Popular in India and MEA. Own brand includes Comfee, Beko HVAC.',features:['Energy star','Self-clean','MSmartHome','Multi-zone control']},
+  {id:'h6',name:'Carrier',cat:'HVAC',sub:'Central / VRF / Chiller',models:['42QHC Infinity Split','40RU Airstage VRF','30XW Water Cooled Chiller'],protocol:'BACnet MS/TP + BACnet/IP + Carrier i-Vu',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'i-Vu Controller IP',t:'text',p:'192.168.x.x'},{l:'BACnet Device ID',t:'text',p:'From controller'},{l:'i-Vu Username',t:'text',p:'admin'}],tip:'Carrier uses BACnet for building integration. i-Vu is the BMS platform.',features:['BACnet native','Predictive maintenance','Variable speed','Energy monitoring']},
+  {id:'h7',name:'Panasonic',cat:'HVAC',sub:'Split / Multi / VRF',models:['CS-Z25TKE Etherea','CS-HE15QKE Standard','CS-MZ25WD2EA Multi','PA-AC100KA VRF'],protocol:'Panasonic Comfort Cloud REST + CZ-CAPWFC1',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'Comfort Cloud Email',t:'text',p:'Panasonic account'},{l:'Password',t:'password',p:''},{l:'Device ID',t:'text',p:'From app'}],tip:'CZ-CAPWFC1 Wi-Fi adapter enables Comfort Cloud and local control.',features:['nanoe-X purification','Econavi sensor','WLAN remote']},
+  // METERS
+  {id:'m1',name:'Schneider Electric',cat:'Meter',sub:'Smart Energy Meter',models:['iEM3155 80A','iEM3355 80A','iEM3455 100A MID','PM8000 Power Meter'],protocol:'Modbus RTU/TCP + EcoStruxure REST',logo:'🟩',region:'Global',color:'#10B981',fields:[{l:'Meter IP (Modbus TCP)',t:'text',p:'192.168.x.x'},{l:'Modbus Slave ID',t:'text',p:'1–247'}],tip:'iEM series is DIN-rail 3-phase. MID certified for billing. Port 502.',features:['3-phase measurement','Power quality','Harmonics','MID certified','Tariff metering']},
+  {id:'m2',name:'ABB',cat:'Meter',sub:'Smart Energy Meter',models:['B23 112-100 3-phase','B21 112-100 1-phase','A43 112-200 MID','M4M 20 Power Analyzer'],protocol:'Modbus RTU/TCP + M2M REST',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'Meter IP',t:'text',p:'192.168.x.x'},{l:'Modbus ID',t:'text',p:'1'}],tip:'M4M 20 is revenue grade. Connect via RS485 to RS485-Ethernet converter.',features:['Revenue metering','Power quality','Demand measurement','Voltage dip']},
+  {id:'m3',name:'Eastron SDM',cat:'Meter',sub:'DIN-Rail Energy Meter',models:['SDM120 1-phase Modbus','SDM230 1-phase MID','SDM630 3-phase Modbus','SDM72D MID'],protocol:'Modbus RTU (RS485)',logo:'🟦',region:'Global / MEA / India',color:'#3B82F6',fields:[{l:'RS485 Address',t:'text',p:'1–247'},{l:'Baud Rate',t:'text',p:'9600 (default)'},{l:'RS485-Ethernet Converter IP',t:'text',p:'192.168.x.x'}],tip:'Very popular low-cost DIN meter. Use Elfin EW10 or Waveshare RS485/TCP converter.',features:['Low cost','DIN rail','RS485 Modbus','Import/export','1 & 3 phase']},
+  {id:'m4',name:'CLOU',cat:'Meter',sub:'Smart Grid / AMI Meter',models:['CL710K42 Single Phase','CL730K22 3-phase','CL1218 AMI Smart Meter'],protocol:'DLMS/COSEM + Modbus TCP + Optical',logo:'🟦',region:'Asia / MEA',color:'#1D4ED8',fields:[{l:'Meter Serial',t:'text',p:'From label'},{l:'DLMS Password',t:'text',p:'From utility'},{l:'OBIS Code Set',t:'text',p:'IEC 62056'}],tip:'Popular AMI meter across MEA utilities. DLMS protocol is utility-grade.',features:['AMI/AMR compatible','DLMS/COSEM','Tamper detection','Remote disconnect']},
+  {id:'m5',name:'Legrand',cat:'Meter',sub:'Smart MCB + Meter',models:['Smart TX3 Circuit Breaker','Drivia Smart Panel','4-module MCB 10–63A'],protocol:'Modbus TCP + Legrand Energy Server REST',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'Energy Server IP',t:'text',p:'192.168.x.x'},{l:'Username',t:'text',p:'admin'},{l:'Password',t:'password',p:''}],tip:'Smart TX3 MCBs replace standard MCBs. Energy Server aggregates data.',features:['Per-circuit smart MCB','Energy per circuit','Remote trip','Cloud management']},
+  {id:'m6',name:'Hager',cat:'Meter',sub:'Smart MCB + KNX',models:['KNX Energy Meter','Focus Energy Monitor','SH MCB Smart System'],protocol:'KNX TP + Modbus TCP + Hager Connection',logo:'🟧',region:'Global',color:'#F97316',fields:[{l:'KNX IP Gateway IP',t:'text',p:'192.168.x.x'},{l:'KNX Group Addresses',t:'text',p:'From ETS project'}],tip:'KNX-based. Requires ETS software for commissioning.',features:['KNX native','Per-circuit monitoring','Smart automation','Demand control']},
+  // SMART HOME
+  {id:'a1',name:'Xiaomi / Mijia',cat:'Appliance',sub:'Smart Home Ecosystem',models:['Mi Smart Plug WiFi 16A','Mi Smart Bulb Essential','Mijia Robot Vacuum','Mi Air Purifier 4 Pro'],protocol:'Mi Home LAN (MiIO) + Xiaomi Cloud REST',logo:'🟧',region:'Global / Asia',color:'#F97316',fields:[{l:'Mi Home Email',t:'text',p:'Xiaomi account'},{l:'Password',t:'password',p:''},{l:'Country Server',t:'text',p:'cn/de/us/sg/in'}],tip:'Use country=de for UAE/Middle East. Local control via miio library.',features:['10,000+ devices','Local + cloud','Mi Home scenes','Low cost']},
+  {id:'a2',name:'Tuya / Smart Life',cat:'Appliance',sub:'Universal IoT Platform',models:['Smart Plugs 10/13/16A','Smart Switches 1/2/3 gang','IR Remote Controller','Smart Sensors'],protocol:'Tuya Cloud REST + Tuya Local LAN + MQTT',logo:'🟦',region:'Global',color:'#1D4ED8',fields:[{l:'Tuya Cloud Access ID',t:'text',p:'From iot.tuya.com'},{l:'Cloud Secret',t:'password',p:''},{l:'Region',t:'text',p:'eu/us/cn/in'}],tip:'Largest IoT platform — powers 300+ brands. Get API key from iot.tuya.com.',features:['300+ sub-brands','Local LAN','Cloud backup','Scene automation']},
+  {id:'a3',name:'Samsung SmartThings',cat:'Appliance',sub:'Smart Home Hub',models:['SmartThings Hub v3','SmartThings Station','Samsung Smart Appliances'],protocol:'SmartThings REST + Z-Wave + Zigbee + LAN',logo:'🟦',region:'Global',color:'#1D4ED8',fields:[{l:'SmartThings Token',t:'text',p:'account.smartthings.com'},{l:'Hub ID',t:'text',p:'From SmartThings app'}],tip:'Generate token at account.smartthings.com > Personal Access Tokens.',features:['Z-Wave + Zigbee','Samsung appliances','Complex automations','Energy monitoring']},
+  {id:'a4',name:'Philips Hue',cat:'Lighting',sub:'Smart Lighting',models:['Hue White & Color A19/A60','GU10 Color Spot','Hue Lightstrip Plus','Hue Bridge v2'],protocol:'Hue Bridge REST (local) + Entertainment API',logo:'🟧',region:'Global',color:'#F97316',fields:[{l:'Hue Bridge IP',t:'text',p:'192.168.x.x'},{l:'Hue Token',t:'text',p:'Press bridge button — auto-generated'}],tip:'Press the bridge button before connecting. Token auto-generated by OpLiv.',features:['16M colors','Entertainment sync','Local API','Geofencing','Presence simulation']},
+  {id:'a5',name:'Shelly',cat:'Switch',sub:'Smart Switch & Relay',models:['Shelly 1 relay','Shelly 1PM relay+meter','Shelly 2.5 2-channel','Shelly Pro 3EM 3-phase'],protocol:'Local REST + MQTT + Shelly Cloud',logo:'🟥',region:'Global',color:'#EF4444',fields:[{l:'Device IP',t:'text',p:'192.168.x.x (per device)'},{l:'MQTT Broker',t:'text',p:'Use OpLiv internal (auto)'}],tip:'No hub needed. Each device has own API. Shelly 3EM for 3-phase monitoring.',features:['No hub needed','Local REST','Open API','3-phase metering','Sub-second response']},
+  {id:'a6',name:'Sonoff / eWeLink',cat:'Switch',sub:'Smart Switch & DIY',models:['Sonoff Basic R3','Sonoff POW Elite 20A','Sonoff 4CH Pro R3','ZBMINI Zigbee'],protocol:'eWeLink Cloud + LAN local mode + Zigbee',logo:'🟧',region:'Global / Asia',color:'#F97316',fields:[{l:'eWeLink Email',t:'text',p:'Account'},{l:'Password',t:'password',p:''},{l:'Region',t:'text',p:'eu/us/as/cn'}],tip:'Enable LAN mode for local control without cloud dependency.',features:['Low cost','LAN local mode','Zigbee option','DIY friendly','Energy monitoring']},
+  {id:'a7',name:'Lutron',cat:'Lighting',sub:'Premium Lighting Control',models:['Caseta Wireless Dimmer','RadioRA 3','Homeworks QSX','Sivoia QS Shades'],protocol:'Lutron Telnet (local) + Caséta REST',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'Bridge IP',t:'text',p:'192.168.x.x'},{l:'Username',t:'text',p:'lutron'},{l:'Password',t:'password',p:'integration'}],tip:'Premium US brand. Very reliable. Telnet protocol for local control.',features:['Premium reliability','Clear Connect RF','Shade integration','Scene control']},
+  {id:'a8',name:'Haier / U+',cat:'Appliance',sub:'Smart Appliances',models:['Haier Smart AC Series','Haier Smart Fridge','HW90 Washing Machine','U+ Platform'],protocol:'Haier U+ Platform + HiLink IoT REST',logo:'🟦',region:'Global / MEA',color:'#1D4ED8',fields:[{l:'U+ Email',t:'text',p:'Email'},{l:'Password',t:'password',p:''},{l:'Country',t:'text',p:'AE/IN/GB/US'}],tip:'U+ works across Haier group brands (Haier/Candy/Hoover). UAE optimized.',features:['Full appliance range','U+ scenes','Energy monitoring','Cross-brand']},
+  {id:'a9',name:'Wipro iHome',cat:'Switch',sub:'India Smart Devices',models:['WiFi Smart Plug 10A','Smart Switch 2 Module','Next 9W Smart Bulb'],protocol:'Tuya Cloud + Local LAN',logo:'🟩',region:'India',color:'#10B981',fields:[{l:'Tuya Access ID',t:'text',p:'iot.tuya.com'},{l:'Secret',t:'password',p:''},{l:'Region',t:'text',p:'in'}],tip:'Wipro uses Tuya. Connect via Tuya API same as Smart Life.',features:['India certified','BEE star rated','ISI mark','Tuya platform']},
+  {id:'a10',name:'Polycab iHome',cat:'Switch',sub:'India Wiring Devices',models:['Smart Switch 6A','Smart Fan Regulator','Smart Dimmer 250W','Smart Plug 10A'],protocol:'Tuya LAN + Cloud',logo:'🟦',region:'India',color:'#3B82F6',fields:[{l:'Tuya Access ID',t:'text',p:'iot.tuya.com'},{l:'Secret',t:'password',p:''},{l:'Region',t:'text',p:'in'}],tip:"India's leading wiring brand. iHome uses Tuya protocol.",features:['ISI certified','Wide range','Energy monitoring','Scene control']},
+  // SECURITY
+  {id:'sec1',name:'Hikvision',cat:'Security',sub:'IP Camera & NVR',models:['DS-2CD2143G2-I 4MP','DS-2CD2347G2-LU ColorVu','DS-7608NXI-I2/S NVR','DS-KC6 Doorbell'],protocol:'ISAPI REST (local HTTP) + Hik-Connect + RTSP',logo:'🟥',region:'Global',color:'#EF4444',fields:[{l:'NVR/Camera IP',t:'text',p:'192.168.x.x'},{l:'Username',t:'text',p:'admin'},{l:'Password',t:'password',p:''}],tip:'ISAPI is local REST API. Enable in Configuration > Integration Protocol.',features:['AI detection','ColorVu night','AcuSense filter','ISAPI local','ANPR plates']},
+  {id:'sec2',name:'Dahua',cat:'Security',sub:'IP Camera & NVR',models:['IPC-HDW2849H-S-IL 8MP','IPC-HFW2849S Full-color','NVR4108HS-8P NVR'],protocol:'ONVIF + Dahua HTTP CGI REST + Smart PSS',logo:'🟦',region:'Global',color:'#1D4ED8',fields:[{l:'Camera/NVR IP',t:'text',p:'192.168.x.x'},{l:'Username',t:'text',p:'admin'},{l:'Password',t:'password',p:''}],tip:'Dahua supports ONVIF for universal compatibility. Local REST via HTTP CGI.',features:['Full-color AI','Smart Motion','WizSense AI','ONVIF','Face recognition']},
+  {id:'sec3',name:'Aqara',cat:'Security',sub:'Zigbee Smart Home Hub',models:['Aqara Hub M2','Aqara Hub M3','Door/Window Sensor','Motion Sensor P1','Smart Lock U100'],protocol:'Aqara Cloud REST + Zigbee 3.0 + Matter',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'Aqara Email',t:'text',p:'Account'},{l:'Password',t:'password',p:''},{l:'Region',t:'text',p:'cn/eu/us/sg'}],tip:'Hub M3 supports Matter. Good for door/window and motion sensor ecosystems.',features:['Zigbee + Matter','Door sensors','Motion sensors','Smart locks','HomeKit']},
+];
+
+// ─── SIMULATION ───────────────────────────────────────────────────────────────
+function useSim() {
+  const [d, setD] = useState({
+    solar:4.82, battery:68, grid:0.4, home:5.22, generator:0,
+    solarToday:18.4, savings:8.60, temp:38, humidity:52,
+    batteryTrend:'charging', currency:'AED',
+    history: Array.from({length:24},(_,i)=>({
+      hour:i,
+      solar:i<6||i>19?0:Math.max(0,6*Math.sin(Math.PI*(i-6)/13)+(Math.random()-.5)*.8),
+      consumption:3+Math.random()*2,
+      battery:40+i*1.2+(Math.random()-.5)*5,
+    })),
+    devices:[
+      {id:1,room:'Majlis',name:'AC — Majlis',icon:'❄️',on:true,power:1800,setpoint:22,type:'ac'},
+      {id:2,room:'Majlis',name:'Lights',icon:'💡',on:true,power:120,dim:80,type:'light'},
+      {id:3,room:'Master Bedroom',name:'AC — Master',icon:'❄️',on:true,power:1400,setpoint:20,type:'ac'},
+      {id:4,room:'Master Bedroom',name:'Lights',icon:'💡',on:false,power:60,dim:100,type:'light'},
+      {id:5,room:'Kitchen',name:'Fridge',icon:'🧊',on:true,power:150,type:'switch',locked:true},
+      {id:6,room:'Kitchen',name:'Dishwasher',icon:'🍽️',on:false,power:1800,type:'switch'},
+      {id:7,room:'Garage',name:'EV Charger',icon:'⚡',on:true,power:7400,soc:64,type:'ev'},
+      {id:8,room:'Garage',name:'Garage Door',icon:'🚗',on:false,type:'garage'},
+      {id:9,room:'Pool Area',name:'Pool Pump',icon:'💧',on:false,power:1100,type:'switch'},
+      {id:10,room:'Guest Bedroom',name:'AC — Guest',icon:'❄️',on:true,power:900,setpoint:24,type:'ac'},
+    ],
+    hitl:[{id:1,agent:'EOA',title:'Participate in DEWA Demand Response',reason:'Grid price rises to 38 fils/kWh 2pm–4pm. I can shift AC + EV to battery, saving an estimated AED 8.40.',impact:'Save AED 8.40 · Battery 85%→60% · Home stays cool',timeout:420}],
+    agentLog:[
+      {id:1,agent:'EOA',time:'14:32',action:'Switched to solar-primary mode',reason:'Solar exceeded home load by 1.8 kW — began battery charging',saving:0.42},
+      {id:2,agent:'HAA',time:'14:18',action:'EV charging shifted to solar window',reason:'Solar forecast shows 5h window — moved schedule forward 90 min',saving:4.20},
+      {id:3,agent:'HAA',time:'13:55',action:'Eco mode — Guest Bedroom AC +2°C',reason:'Room unoccupied for 28 minutes',saving:0.18},
+    ],
+    bills:[
+      {month:'Apr 2025',kwh:1820,amount:512,savings:184},
+      {month:'Mar 2025',kwh:2140,amount:643,savings:210},
+      {month:'Feb 2025',kwh:1960,amount:571,savings:195},
+      {month:'Jan 2025',kwh:2280,amount:698,savings:230},
+    ],
+  });
+  const tick = useRef(0);
+  useEffect(()=>{
+    const iv = setInterval(()=>{
+      tick.current++;
+      const t=tick.current;
+      const hr = new Date().getHours()+new Date().getMinutes()/60;
+      const sBase = hr<6||hr>19?0:6*Math.sin(Math.PI*(hr-6)/13);
+      const solar = Math.max(0,sBase+Math.sin(t*.1)*.3+.1);
+      const home = 4.8+Math.sin(t*.07)*.6;
+      const battery = Math.min(100,Math.max(10,d.battery+(solar>home?.05:-.03)));
+      const grid = Math.max(0,home-solar-(battery>20?.5:0));
+      setD(prev=>({...prev,solar,home,battery,grid,batteryTrend:solar>home?'charging':'discharging',
+        hitl:prev.hitl.map(h=>({...h,timeout:Math.max(0,h.timeout-2)}))
+      }));
+    },2000);
+    return ()=>clearInterval(iv);
+  },[]);
+  const toggleDev = useCallback(id=>{
+    setD(prev=>({...prev,devices:prev.devices.map(dv=>dv.id===id&&!dv.locked?{...dv,on:!dv.on}:dv)}));
+  },[]);
+  const resolveHitl = useCallback((id,dec)=>{
+    setD(prev=>({...prev,
+      hitl:prev.hitl.filter(h=>h.id!==id),
+      agentLog:[{id:Date.now(),agent:'EOA',time:new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),
+        action:'DR Participation '+(dec==='approve'?'approved':'rejected'),
+        reason:dec==='approve'?'Owner approved via in-app':'Owner rejected',saving:dec==='approve'?8.40:0},...prev.agentLog]
+    }));
+  },[]);
+  return {d, toggleDev, resolveHitl};
+}
+
+// ─── POWER FLOW CANVAS ────────────────────────────────────────────────────────
+function PowerFlow({solar,battery,grid,home,batteryTrend}) {
+  const cvs = useRef(null);
+  const pts = useRef([]);
+  const raf = useRef(null);
+  const nodes={sun:{x:.15,y:.15,label:'Solar',val:`${solar.toFixed(1)}kW`,color:'#F59E0B'},
+    bat:{x:.15,y:.8,label:'Battery',val:`${battery.toFixed(0)}%`,color:'#10B981'},
+    grid:{x:.85,y:.15,label:'Grid',val:`${grid.toFixed(1)}kW`,color:'#6366F1'},
+    home:{x:.5,y:.5,label:'Home',val:`${home.toFixed(1)}kW`,color:'#00D4A8'}};
+  const flows=[
+    {from:'sun',to:'home',kw:solar,color:'#F59E0B'},
+    {from:batteryTrend==='charging'?'sun':'bat',to:batteryTrend==='charging'?'bat':'home',kw:.8,color:'#10B981'},
+    {from:'grid',to:'home',kw:grid,color:'#6366F1'},
+  ];
+  useEffect(()=>{
+    const cv=cvs.current; if(!cv) return;
+    const ctx=cv.getContext('2d');
+    let W,H;
+    const resize=()=>{W=cv.width=cv.offsetWidth;H=cv.height=cv.offsetHeight};
+    resize();
+    const gp=k=>({x:nodes[k].x*W,y:nodes[k].y*H});
+    let fr=0;
+    const draw=()=>{
+      ctx.clearRect(0,0,W,H);
+      flows.forEach(f=>{
+        if(f.kw<=.05)return;
+        const a=gp(f.from),b=gp(f.to);
+        ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+        ctx.strokeStyle=f.color+'18';ctx.lineWidth=1.5;ctx.stroke();
+        if(fr%20===0&&f.kw>.05)pts.current.push({x:a.x,y:a.y,tx:b.x,ty:b.y,p:0,sp:.005+f.kw*.003,c:f.color,sz:1.5+f.kw*.3});
+      });
+      fr++;
+      pts.current=pts.current.filter(p=>p.p<1);
+      pts.current.forEach(p=>{
+        p.p=Math.min(1,p.p+p.sp);p.x+=(p.tx-p.x)*p.sp*2.5;p.y+=(p.ty-p.y)*p.sp*2.5;
+        const al=Math.sin(p.p*Math.PI);
+        ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);
+        ctx.fillStyle=p.c+Math.floor(al*255).toString(16).padStart(2,'0');ctx.fill();
+      });
+      Object.entries(nodes).forEach(([k,n])=>{
+        const pos=gp(k);const r=k==='home'?34:26;
+        ctx.beginPath();ctx.arc(pos.x,pos.y,r,0,Math.PI*2);
+        ctx.fillStyle=n.color+'1A';ctx.fill();
+        ctx.strokeStyle=n.color+'88';ctx.lineWidth=1.5;ctx.stroke();
+        ctx.fillStyle=n.color;ctx.textAlign='center';
+        ctx.font=`500 ${k==='home'?12:10}px 'DM Sans',sans-serif`;
+        ctx.fillText(n.label,pos.x,pos.y-4);
+        ctx.font=`700 ${k==='home'?13:11}px 'Space Mono',monospace`;
+        ctx.fillText(n.val,pos.x,pos.y+10);
+      });
+      raf.current=requestAnimationFrame(draw);
+    };
+    draw();
+    window.addEventListener('resize',resize);
+    return()=>{cancelAnimationFrame(raf.current);window.removeEventListener('resize',resize)};
+  },[solar,battery,grid,home,batteryTrend]);
+  return React.createElement('canvas',{ref:cvs,style:{width:'100%',height:'100%',display:'block'}});
+}
+
+// ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
+const s = {
+  card:{background:T.s1,border:`1px solid ${T.b1}`,borderRadius:12,padding:16},
+  card2:{background:T.s2,border:`1px solid ${T.b1}`,borderRadius:10,padding:12},
+  label:{fontSize:10,color:T.t2,textTransform:'uppercase',letterSpacing:'0.8px',fontWeight:600},
+  val:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.t1},
+  tag:(color,bg)=>({display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:20,fontSize:10,fontWeight:600,background:bg||color+'1A',color}),
+  btn:(bg,color,br)=>({display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6,padding:'8px 16px',borderRadius:br||8,border:'none',cursor:'pointer',fontFamily:T.font,fontSize:13,fontWeight:500,background:bg,color,transition:'opacity 0.15s'}),
+  input:{background:T.s3,border:`1px solid ${T.b2}`,borderRadius:8,padding:'10px 12px',color:T.t1,fontSize:13,outline:'none',fontFamily:T.font,width:'100%'},
+  toggle:(on)=>({position:'relative',width:40,height:22,borderRadius:11,cursor:'pointer',border:'none',background:on?T.cyan:T.s3,transition:'background .2s',flexShrink:0}),
+};
+
+function Tag({color,children,bg}){return React.createElement('span',{style:s.tag(color,bg)},children)}
+function Btn({bg,color,onClick,children,style={},disabled}){
+  return React.createElement('button',{style:{...s.btn(bg,color),opacity:disabled?.5:1,...style},onClick,disabled},children);
+}
+function Toggle({on,onClick}){
+  return React.createElement('button',{style:s.toggle(on),onClick},
+    React.createElement('span',{style:{position:'absolute',top:3,width:16,height:16,borderRadius:'50%',background:'white',transition:'left .2s',left:on?21:3}})
+  );
+}
+function Input({value,onChange,placeholder,type='text',style={}}){
+  return React.createElement('input',{style:{...s.input,...style},value,onChange,placeholder,type});
+}
+function Card({children,style={}}){return React.createElement('div',{style:{...s.card,...style}},children)}
+function Card2({children,style={}}){return React.createElement('div',{style:{...s.card2,...style}},children)}
+function Sep(){return React.createElement('div',{style:{height:1,background:T.b1,margin:'10px 0'}})}
+
+// ─── LOGIN PAGE ───────────────────────────────────────────────────────────────
+function LoginPage({onLogin}) {
+  const [tab,setTab]=useState('login');
+  const [email,setEmail]=useState('');
+  const [pass,setPass]=useState('');
+  const [name,setName]=useState('');
+  const [country,setCountry]=useState('UAE');
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState('');
+
+  const handleSubmit = ()=>{
+    if(!email||!pass){setErr('Please fill all required fields');return;}
+    if(tab==='register'&&!name){setErr('Please enter your name');return;}
+    setLoading(true);setErr('');
+    setTimeout(()=>{
+      setLoading(false);
+      onLogin({name:name||email.split('@')[0],email,country});
+    },1400);
+  };
+
+  const handleDemo = ()=>{
+    setLoading(true);
+    setTimeout(()=>{ setLoading(false); onLogin({name:'Hossain',email:'hossain@opliv.io',country:'UAE',demo:true}); },800);
+  };
+
+  return React.createElement('div',{style:{height:'100%',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:20,background:T.bg,position:'relative',overflow:'hidden'}},
+    // Background glow
+    React.createElement('div',{style:{position:'absolute',top:'10%',left:'50%',transform:'translateX(-50%)',width:400,height:400,background:'radial-gradient(circle,#00D4A80A 0%,transparent 70%)',pointerEvents:'none'}}),
+    React.createElement('div',{style:{position:'absolute',bottom:'5%',right:'10%',width:200,height:200,background:'radial-gradient(circle,#6366F108 0%,transparent 70%)',pointerEvents:'none'}}),
+
+    // Logo + headline
+    React.createElement('div',{style:{textAlign:'center',marginBottom:32,animation:'fadeUp 0.5s ease'},className:'fade-up'},
+      React.createElement('div',{style:{fontSize:42,fontWeight:700,color:T.cyan,letterSpacing:-2,marginBottom:4}},'OpLiv'),
+      React.createElement('div',{style:{fontSize:13,color:T.t2,letterSpacing:1}},
+        'HOME ENERGY MANAGEMENT'
+      ),
+      React.createElement('div',{style:{display:'flex',gap:12,justifyContent:'center',marginTop:14,flexWrap:'wrap'}},
+        ['☀️ Solar','🔋 Battery','⚡ Grid','🚗 EV','🤖 AI Agents'].map(f=>
+          React.createElement('span',{key:f,style:{fontSize:11,color:T.t3,background:T.s2,padding:'3px 8px',borderRadius:20,border:`1px solid ${T.b1}`}},f)
+        )
+      )
+    ),
+
+    // Card
+    React.createElement('div',{style:{width:'100%',maxWidth:380,animation:'fadeUp 0.5s 0.1s ease both'},className:'fade-up'},
+      // Tab switcher
+      React.createElement('div',{style:{display:'flex',background:T.s2,borderRadius:10,padding:4,marginBottom:20,border:`1px solid ${T.b1}`}},
+        ['login','register'].map(t=>
+          React.createElement('button',{key:t,onClick:()=>{setTab(t);setErr('')},style:{flex:1,padding:'8px',borderRadius:7,border:'none',cursor:'pointer',fontSize:13,fontWeight:500,fontFamily:T.font,background:tab===t?T.s1:'transparent',color:tab===t?T.t1:T.t2,transition:'all .2s'}},t==='login'?'Sign In':'Create Account')
+        )
+      ),
+
+      // Fields
+      React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:10}},
+        tab==='register'&&React.createElement('div',null,
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginBottom:5}},'Full Name'),
+          React.createElement(Input,{value:name,onChange:e=>setName(e.target.value),placeholder:'e.g. Hossain Ahmed'})
+        ),
+        React.createElement('div',null,
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginBottom:5}},'Email Address'),
+          React.createElement(Input,{value:email,onChange:e=>setEmail(e.target.value),placeholder:'your@email.com'})
+        ),
+        React.createElement('div',null,
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginBottom:5}},'Password'),
+          React.createElement(Input,{value:pass,onChange:e=>setPass(e.target.value),placeholder:'8+ characters',type:'password'})
+        ),
+        tab==='register'&&React.createElement('div',null,
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginBottom:5}},'Country / Region'),
+          React.createElement('select',{value:country,onChange:e=>setCountry(e.target.value),style:{...s.input,appearance:'none'}},
+            ['UAE','Saudi Arabia','India','Oman','Qatar','Kuwait','Bahrain','Egypt','Pakistan','Other'].map(c=>
+              React.createElement('option',{key:c,value:c},c)
+            )
+          )
+        ),
+        err&&React.createElement('div',{style:{fontSize:12,color:T.red,textAlign:'center',padding:'6px 10px',background:'#EF444411',borderRadius:6,border:'1px solid #EF444422'}},err),
+        React.createElement(Btn,{bg:T.cyan,color:'#000',onClick:handleSubmit,disabled:loading,style:{width:'100%',padding:'12px',fontSize:14,fontWeight:600,marginTop:4,borderRadius:10}},
+          loading?React.createElement('span',{style:{animation:'spin 1s linear infinite',display:'inline-block'}},'⟳'):(tab==='login'?'Sign In →':'Create Account →')
+        ),
+        React.createElement('div',{style:{textAlign:'center',fontSize:12,color:T.t3,margin:'8px 0'}},'— or —'),
+        React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:handleDemo,disabled:loading,style:{width:'100%',padding:'12px',borderRadius:10,border:`1px solid ${T.b2}`,fontSize:13}},
+          '🎯 Try Demo — Hossain\'s Villa, Dubai'
+        ),
+      ),
+
+      // Footer
+      React.createElement('div',{style:{textAlign:'center',marginTop:20}},
+        React.createElement('div',{style:{fontSize:11,color:T.t3}},
+          tab==='login'?React.createElement('span',null,"Don't have an account? ",React.createElement('span',{style:{color:T.cyan,cursor:'pointer'},onClick:()=>{setTab('register');setErr('')}},"Create one"))
+          :React.createElement('span',null,"Already have an account? ",React.createElement('span',{style:{color:T.cyan,cursor:'pointer'},onClick:()=>{setTab('login');setErr('')}},"Sign in"))
+        ),
+        React.createElement('div',{style:{fontSize:10,color:T.t3,marginTop:8}},'7-day Elite trial • No credit card required • UAE & India tariffs included')
+      )
+    )
+  );
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+function App() {
+  const {d,toggleDev,resolveHitl}=useSim();
+  const [user,setUser]=useState(null);
+  const [page,setPage]=useState('dashboard');
+  const [sidebar,setSidebar]=useState(false);
+  const [selRoom,setSelRoom]=useState(null);
+  const [selDev,setSelDev]=useState(null);
+  const [garage,setGarage]=useState(false);
+  const [connDev,setConnDev]=useState(null);
+  const [connStep,setConnStep]=useState(0);
+  const [connVals,setConnVals]=useState({});
+  const [connMod,setConnMod]=useState(0);
+  const [connDone,setConnDone]=useState([]);
+  const [connLoading,setConnLoading]=useState(false);
+  const [libSel,setLibSel]=useState(null);
+  const [libSearch,setLibSearch]=useState('');
+  const [libCat,setLibCat]=useState('All');
+
+  if(!user) return React.createElement(LoginPage,{onLogin:u=>setUser(u)});
+
+  const nav=[
+    {id:'dashboard',icon:'⌂',label:'Home'},
+    {id:'controller',icon:'◈',label:'Control'},
+    {id:'circuit',icon:'⚡',label:'Circuit'},
+    {id:'layout',icon:'⊞',label:'Villa'},
+    {id:'optimizer',icon:'◉',label:'Optimize'},
+    {id:'forecast',icon:'☀',label:'Forecast'},
+    {id:'scheduler',icon:'◷',label:'Schedule'},
+    {id:'grid',icon:'⋈',label:'Grid Flex'},
+    {id:'billing',icon:'◎',label:'Bills'},
+    {id:'library',icon:'⊙',label:'Devices'},
+    {id:'agents',icon:'◆',label:'Agents'},
+    {id:'alerts',icon:'◬',label:'Alerts'},
+    {id:'profile',icon:'○',label:'Profile'},
+  ];
+
+  const go=(p)=>{ setPage(p); setSidebar(false); };
+  const catColors={Solar:'#F59E0B',Battery:'#10B981',EV:'#3B82F6',Generator:'#EF4444',HVAC:'#6366F1',Meter:'#8B5CF6',Appliance:'#F97316',Lighting:'#FBBF24',Switch:'#06B6D4',Security:'#EF4444'};
+  const libCats=['All','Solar','Battery','EV','Generator','HVAC','Meter','Appliance','Lighting','Switch','Security'];
+
+  // Connection wizard
+  const startConn=(m)=>{ setConnDev(m);setConnStep(0);setConnVals({});setConnMod(0);setLibSel(null); };
+  const doConn=()=>{
+    if(connStep<connDev.fields.length-1){setConnStep(s=>s+1);return;}
+    setConnLoading(true);
+    setTimeout(()=>{ setConnLoading(false);setConnDone(c=>[...c,connDev.id]); },1500);
+  };
+
+  const filteredDevs = DEVICES.filter(m=>
+    (libCat==='All'||m.cat===libCat)&&
+    (m.name.toLowerCase().includes(libSearch.toLowerCase())||m.sub.toLowerCase().includes(libSearch.toLowerCase())||m.protocol.toLowerCase().includes(libSearch.toLowerCase()))
+  );
+
+  // ── DASHBOARD ──────────────────────────────────────────────────────────────
+  const PageDashboard=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+    // HITL card
+    d.hitl.map(h=>React.createElement(Card,{key:h.id,style:{border:'1px solid #6366F133',background:'linear-gradient(135deg,#0E1420,#141B2D)'}},
+      React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10}},
+        React.createElement('span',{style:{fontSize:16,color:T.purple}},'◆'),
+        React.createElement('div',null,
+          React.createElement('div',{style:{fontSize:10,color:T.purple,fontWeight:600,letterSpacing:.5}},'ENERGY OPERATOR · ACTION REQUESTED'),
+          React.createElement('div',{style:{fontSize:13,fontWeight:600,marginTop:2}},h.title)
+        )
+      ),
+      React.createElement('p',{style:{fontSize:12,color:T.t2,lineHeight:1.6,marginBottom:8}},h.reason),
+      React.createElement('span',{style:{...s.tag(T.green),display:'inline-block',marginBottom:8}},h.impact),
+      React.createElement('div',{style:{height:3,background:T.s3,borderRadius:2,marginBottom:10,overflow:'hidden'}},
+        React.createElement('div',{style:{height:'100%',width:`${(h.timeout/420)*100}%`,background:h.timeout>120?T.green:h.timeout>60?T.amber:T.red,transition:'width 2s linear'}})
+      ),
+      React.createElement('div',{style:{display:'flex',gap:8}},
+        React.createElement(Btn,{bg:'#10B98122',color:T.green,onClick:()=>resolveHitl(h.id,'approve'),style:{flex:1,border:'1px solid #10B98133',borderRadius:8}},'✓ Approve'),
+        React.createElement(Btn,{bg:'#EF444422',color:T.red,onClick:()=>resolveHitl(h.id,'reject'),style:{flex:1,border:'1px solid #EF444433',borderRadius:8}},'✗ Reject'),
+        React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:()=>{},style:{border:`1px solid ${T.b2}`,borderRadius:8}},'Modify')
+      ),
+      React.createElement('div',{style:{fontSize:10,color:T.t3,textAlign:'center',marginTop:6}},`Auto-fallback in ${Math.floor(h.timeout/60)}:${String(h.timeout%60).padStart(2,'0')} min`)
+    )),
+    // Greeting
+    React.createElement(Card,null,
+      React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
+        React.createElement('div',null,
+          React.createElement('div',{style:{fontSize:10,color:T.t2,letterSpacing:.5}},'GOOD AFTERNOON'),
+          React.createElement('div',{style:{fontSize:18,fontWeight:700,marginTop:2}},`${user.name}'s Villa ☀️`),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:3}},`Dubai · ${d.temp}°C · Sunny · ${d.humidity}% humidity`)
+        ),
+        React.createElement('div',{style:{textAlign:'right'}},
+          React.createElement('div',{style:{fontSize:10,color:T.cyan,letterSpacing:.5}},"TODAY'S SAVINGS"),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.cyan}},`AED ${d.savings.toFixed(2)}`)
+        )
+      )
+    ),
+    // Quick actions
+    React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}},
+      [{icon:'🌙',label:'Good Night',color:'#6366F1'},{icon:'👥',label:'Guest Mode',color:'#10B981'},
+       {icon:'✈️',label:'Vacation',color:'#F59E0B'},{icon:'🎉',label:'Party Mode',color:'#EC4899'},
+       {icon:garage?'🔴':'🟢',label:garage?'Close Garage':'Open Garage',color:T.cyan,fn:()=>setGarage(!garage)},
+       {icon:'🚨',label:'Emergency',color:T.red}
+      ].map((a,i)=>React.createElement('button',{key:i,onClick:a.fn,style:{...s.card2,border:`1px solid ${a.color}22`,background:`${a.color}08`,cursor:'pointer',textAlign:'center',padding:'12px 8px'}},
+        React.createElement('div',{style:{fontSize:20,marginBottom:4}},a.icon),
+        React.createElement('div',{style:{fontSize:10,color:a.color==='#EF4444'?T.red:T.t2,fontWeight:500}},a.label)
+      ))
+    ),
+    // Power Flow
+    React.createElement(Card,{style:{padding:0,overflow:'hidden'}},
+      React.createElement('div',{style:{padding:'12px 16px 8px',borderBottom:`1px solid ${T.b1}`,display:'flex',justifyContent:'space-between',alignItems:'center'}},
+        React.createElement('span',{style:{fontSize:12,fontWeight:600}},'Live Power Flow'),
+        React.createElement('span',{style:{...s.tag(T.cyan),animation:'pulse 2s infinite'}},'● LIVE')
+      ),
+      React.createElement('div',{style:{height:200}},React.createElement(PowerFlow,{solar:d.solar,battery:d.battery,grid:d.grid,home:d.home,batteryTrend:d.batteryTrend}))
+    ),
+    // KPI grid
+    React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+      [{label:'SOLAR',val:`${d.solar.toFixed(2)}kW`,sub:`${d.solarToday} kWh today`,color:T.amber},
+       {label:'BATTERY',val:`${Math.round(d.battery)}%`,sub:d.batteryTrend==='charging'?'↑ Charging':'↓ Discharging',color:T.green},
+       {label:'GRID',val:`${d.grid.toFixed(2)}kW`,sub:'Grid import',color:T.purple},
+       {label:'HOME',val:`${d.home.toFixed(2)}kW`,sub:'Total load',color:T.cyan},
+      ].map((k,i)=>React.createElement(Card,{key:i},
+        React.createElement('div',{style:s.label},k.label),
+        React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:k.color,marginTop:4}},k.val),
+        React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},k.sub)
+      ))
+    ),
+    // AI tip
+    React.createElement(Card2,{style:{border:'1px solid #00D4A822',display:'flex',gap:10}},
+      React.createElement('span',{style:{fontSize:16,color:T.cyan}},'◆'),
+      React.createElement('div',null,
+        React.createElement('div',{style:{fontSize:10,color:T.cyan,fontWeight:600,marginBottom:3}},'HOSSAIN CONTROLLER · AI TIP'),
+        React.createElement('div',{style:{fontSize:12,color:T.t2,lineHeight:1.6}},'Best load window today: 12:00–17:00 (solar peak). Run dishwasher + washing machine now to save AED 3.50.')
+      )
+    )
+  );
+
+  // ── CONTROLLER ─────────────────────────────────────────────────────────────
+  const PageController=()=>{
+    const rooms=[...new Set(d.devices.map(dv=>dv.room))];
+    return React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+      React.createElement(Card,{style:{background:'#EF444408',border:'1px solid #EF444422',display:'flex',justifyContent:'space-between',alignItems:'center'}},
+        React.createElement('div',null,
+          React.createElement('div',{style:{fontSize:10,color:T.red,fontWeight:600,letterSpacing:.5}},'HOSSAIN CONTROLLER'),
+          React.createElement('div',{style:{fontSize:12,color:T.t2,marginTop:2}},`${d.devices.filter(dv=>dv.on).length} active · ${(d.devices.filter(dv=>dv.on).reduce((a,b)=>a+(b.power||0),0)/1000).toFixed(1)} kW`)
+        ),
+        React.createElement(Btn,{bg:'#EF444422',color:T.red,onClick:()=>{},style:{border:'1px solid #EF444433',borderRadius:8,fontSize:11}},'🚨 Emergency Stop')
+      ),
+      rooms.map(room=>{
+        const devs=d.devices.filter(dv=>dv.room===room);
+        return React.createElement(Card,{key:room},
+          React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
+            React.createElement('div',null,
+              React.createElement('span',{style:{fontWeight:600,fontSize:13}},room),
+              React.createElement('span',{style:{fontSize:11,color:T.t2,marginLeft:8}},`${devs.filter(dv=>dv.on).length}/${devs.length} on`)
+            ),
+            React.createElement('span',{style:{fontFamily:T.mono,fontSize:12,color:T.cyan}},`${(devs.filter(dv=>dv.on).reduce((a,b)=>a+(b.power||0),0)/1000).toFixed(1)} kW`)
+          ),
+          devs.map(dev=>React.createElement('div',{key:dev.id,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderTop:`1px solid ${T.b1}`,cursor:'pointer'},
+            onClick:()=>setSelDev(selDev?.id===dev.id?null:dev)},
+            React.createElement('span',{style:{fontSize:18,width:28}},dev.icon),
+            React.createElement('div',{style:{flex:1}},
+              React.createElement('div',{style:{fontSize:13,fontWeight:500}},dev.name),
+              React.createElement('div',{style:{fontSize:11,color:T.t2}},
+                dev.type==='ac'?`${dev.setpoint}°C`:dev.type==='ev'?`${dev.soc}% SOC`:dev.power?`${dev.power}W`:'',
+                dev.locked&&React.createElement('span',{style:{...s.tag(T.red),marginLeft:6,fontSize:9}},'LOCKED')
+              )
+            ),
+            React.createElement(Toggle,{on:dev.on,onClick:(e)=>{e.stopPropagation();toggleDev(dev.id);}})
+          )),
+          selDev&&devs.find(dv=>dv.id===selDev.id)&&React.createElement('div',{style:{marginTop:10,padding:10,background:T.s3,borderRadius:8}},
+            selDev.type==='ac'&&React.createElement('div',null,
+              React.createElement('div',{style:{fontSize:11,color:T.t2,marginBottom:6}},`Temperature: ${selDev.setpoint}°C`),
+              React.createElement('input',{type:'range',min:16,max:30,defaultValue:selDev.setpoint,style:{width:'100%',height:4,borderRadius:2,background:T.s1,outline:'none',WebkitAppearance:'none'}}),
+              React.createElement('div',{style:{display:'flex',gap:6,marginTop:8}},
+                ['Cool','Heat','Fan','Auto'].map(m=>React.createElement(Btn,{key:m,bg:T.s2,color:T.t2,onClick:()=>{},style:{fontSize:11,padding:'4px 10px',border:`1px solid ${T.b2}`,borderRadius:6}},m))
+              )
+            ),
+            selDev.type==='ev'&&React.createElement('div',null,
+              React.createElement('div',{style:{fontSize:11,color:T.t2,marginBottom:6}},`SOC: ${selDev.soc}% · Target: 90%`),
+              React.createElement('div',{style:{height:6,background:T.s1,borderRadius:3,overflow:'hidden',marginBottom:8}},
+                React.createElement('div',{style:{height:'100%',width:`${selDev.soc}%`,background:T.green,borderRadius:3}})
+              ),
+              React.createElement('div',{style:{display:'flex',gap:6}},
+                ['Max Solar','Off-Peak','Fast'].map(m=>React.createElement(Btn,{key:m,bg:T.s2,color:T.t2,onClick:()=>{},style:{flex:1,fontSize:11,border:`1px solid ${T.b2}`,borderRadius:6}},m))
+              )
+            ),
+            selDev.type==='garage'&&React.createElement(Btn,{bg:garage?'#EF444422':'#10B98122',color:garage?T.red:T.green,onClick:()=>setGarage(!garage),style:{width:'100%',border:`1px solid ${garage?'#EF444433':'#10B98133'}`,borderRadius:8}},
+              garage?'🔴 Close Garage Door':'🟢 Open Garage Door'
+            )
+          )
+        )
+      })
+    );
+  };
+
+  // ── CIRCUIT ────────────────────────────────────────────────────────────────
+  const PageCircuit=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:3}},'Circuit Architect'),
+      React.createElement('div',{style:{fontSize:11,color:T.t2}},'Live electrical topology · Real-time kW overlay')
+    ),
+    React.createElement(Card,{style:{padding:0,overflow:'hidden'}},
+      React.createElement('svg',{viewBox:'0 0 100 110',style:{width:'100%',display:'block'}},
+        [['grid','mdb'],['solar','mdb'],['bat','mdb'],['gen','mdb'],['mdb','ac'],['mdb','ev'],['mdb','light']].map(([a,b],i)=>{
+          const nds={grid:{x:10,y:10},solar:{x:60,y:10},gen:{x:10,y:45},bat:{x:60,y:45},mdb:{x:35,y:72},ac:{x:10,y:88},ev:{x:60,y:88},light:{x:35,y:96}};
+          const na=nds[a],nb=nds[b];
+          return React.createElement('line',{key:i,x1:na.x+16,y1:na.y+5,x2:nb.x+16,y2:nb.y,stroke:'rgba(255,255,255,0.08)',strokeWidth:.5});
+        }),
+        [
+          {id:'grid',label:'DEWA Grid',sub:'415V 3-Phase',x:10,y:10,color:T.purple,kw:d.grid},
+          {id:'solar',label:'Solar Inverter',sub:'Huawei SUN2000',x:60,y:10,color:T.amber,kw:d.solar},
+          {id:'gen',label:'Generator',sub:'Cummins 17kVA',x:10,y:45,color:T.red,kw:0},
+          {id:'bat',label:'Battery',sub:'Tesla PW3',x:60,y:45,color:T.green,kw:d.battery},
+          {id:'mdb',label:'Main DB',sub:'Schneider 200A',x:35,y:72,color:T.cyan,kw:d.home},
+          {id:'ac',label:'HVAC',sub:'3× AC Units',x:10,y:88,color:'#8B5CF6',kw:4.1},
+          {id:'ev',label:'EV Charger',sub:'Wallbox 7.4kW',x:60,y:88,color:T.blue,kw:7.4},
+          {id:'light',label:'Lighting',sub:'LED Circuits',x:35,y:96,color:T.amber,kw:.3},
+        ].map(n=>React.createElement('g',{key:n.id},
+          React.createElement('rect',{x:n.x,y:n.y,width:36,height:11,rx:2,fill:n.color+'1A',stroke:n.color+'55',strokeWidth:.5}),
+          React.createElement('text',{x:n.x+2,y:n.y+4.5,fill:n.color,fontSize:2.2,fontFamily:'DM Sans',fontWeight:600},n.label),
+          React.createElement('text',{x:n.x+2,y:n.y+7.5,fill:'rgba(255,255,255,0.4)',fontSize:1.8,fontFamily:'DM Sans'},n.sub),
+          React.createElement('text',{x:n.x+34,y:n.y+5,fill:n.color,fontSize:2,fontFamily:'Space Mono',textAnchor:'end'},
+            n.id==='bat'?`${n.kw.toFixed(0)}%`:`${n.kw.toFixed(1)}kW`)
+        ))
+      )
+    ),
+    React.createElement('div',{style:{display:'flex',gap:8}},
+      React.createElement(Btn,{bg:T.cyan,color:'#000',onClick:()=>{},style:{flex:1,borderRadius:8}},'+ Add Node'),
+      React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:()=>{},style:{flex:1,border:`1px solid ${T.b2}`,borderRadius:8}},'Auto-Layout'),
+      React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:()=>{},style:{border:`1px solid ${T.b2}`,borderRadius:8}},'Export PDF')
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:8}},'Mermaid Auto-Schematic'),
+      React.createElement('div',{style:{fontFamily:T.mono,fontSize:10,color:T.cyan,lineHeight:1.8,background:T.s3,padding:10,borderRadius:6,whiteSpace:'pre'}},
+        'graph LR\n  GRID[DEWA Grid 415V]-->MDB\n  SOLAR[Huawei SUN2000]-->MDB\n  BAT[Tesla PW3]<-->MDB\n  GEN[Cummins 17kVA]-->MDB\n  MDB[Main DB 200A]-->HVAC\n  MDB-->EV[Wallbox 7.4kW]\n  MDB-->LIGHT[LED]'
+      )
+    )
+  );
+
+  // ── VILLA LAYOUT ───────────────────────────────────────────────────────────
+  const PageLayout=()=>{
+    const [floor,setFloor]=useState('Ground Floor');
+    const allRooms=[
+      {name:'Majlis',floor:'Ground',occupied:true,power:1920},
+      {name:'Kitchen',floor:'Ground',occupied:true,power:150},
+      {name:'Garage',floor:'Ground',occupied:false,power:7400},
+      {name:'Plant Room',floor:'Ground',occupied:false,power:0},
+      {name:'Master Bedroom',floor:'First',occupied:true,power:1400},
+      {name:'Guest Bedroom',floor:'First',occupied:false,power:900},
+    ];
+    const rooms=allRooms.filter(r=>r.floor===(floor==='Ground Floor'?'Ground':'First'));
+    return React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+      React.createElement(Card,null,
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
+          React.createElement('span',{style:{fontSize:12,fontWeight:600}},`${user.name}'s Villa · Dubai`),
+          React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:()=>{},style:{fontSize:11,border:`1px solid ${T.b2}`,borderRadius:6,padding:'5px 10px'}},'+ Add Room')
+        ),
+        React.createElement('div',{style:{display:'flex',gap:6}},
+          ['Ground Floor','First Floor'].map(f=>
+            React.createElement(Btn,{key:f,bg:floor===f?T.cyan:T.s3,color:floor===f?'#000':T.t2,onClick:()=>setFloor(f),style:{fontSize:11,padding:'6px 12px',borderRadius:6}},f)
+          )
+        )
+      ),
+      React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+        rooms.map(room=>{
+          const devs=d.devices.filter(dv=>dv.room===room.name);
+          return React.createElement(Card,{key:room.name,style:{border:`1px solid ${room.occupied?'#00D4A822':T.b1}`,cursor:'pointer'},onClick:()=>setSelRoom(selRoom===room.name?null:room.name)},
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
+              React.createElement('div',{style:{fontSize:13,fontWeight:600}},room.name),
+              room.occupied&&React.createElement('span',{style:s.tag(T.cyan)},'● Occupied')
+            ),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:3}},`${devs.length} devices`),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:12,color:T.cyan,marginTop:3}},`${(room.power/1000).toFixed(1)} kW`),
+            selRoom===room.name&&React.createElement('div',{style:{marginTop:10,borderTop:`1px solid ${T.b1}`,paddingTop:8}},
+              devs.map(dev=>React.createElement('div',{key:dev.id,style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
+                React.createElement('span',{style:{fontSize:12}},`${dev.icon} ${dev.name}`),
+                React.createElement(Toggle,{on:dev.on,onClick:(e)=>{e.stopPropagation();toggleDev(dev.id);}})
+              ))
+            )
+          );
+        })
+      ),
+      React.createElement(Card2,{style:{border:`1px solid ${T.b2}`,textAlign:'center',padding:20}},
+        React.createElement('div',{style:{fontSize:24,marginBottom:6}},'🏠'),
+        React.createElement('div',{style:{fontSize:12,color:T.t2}},'Upload floor plan to see your actual villa layout'),
+        React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:()=>{},style:{marginTop:10,border:`1px solid ${T.b2}`,borderRadius:8,fontSize:11}},'Upload Floor Plan')
+      )
+    );
+  };
+
+  // ── OPTIMIZER ─────────────────────────────────────────────────────────────
+  const PageOptimizer=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+    React.createElement(Card,{style:{background:'linear-gradient(135deg,#00D4A80A,#0E1420)',border:'1px solid #00D4A822'}},
+      React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+        React.createElement('div',null,
+          React.createElement('span',{style:{...s.tag(T.cyan),marginBottom:8,display:'block'}},'◉ OPTIMIZER ACTIVE'),
+          React.createElement('div',{style:{fontSize:14,fontWeight:600}},'Solar-Primary Mode'),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},`Solar (${d.solar.toFixed(1)}kW) → Home + Battery Charging`)
+        ),
+        React.createElement('div',{style:{textAlign:'right'}},
+          React.createElement('div',{style:{fontSize:11,color:T.t2}},'Grid Independence'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.cyan}},'78%')
+        )
+      )
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Source Priority'),
+      [{src:'☀️ Solar',kw:d.solar,color:T.amber,active:true},{src:'🔋 Battery',kw:1.2,color:T.green,active:d.battery>20},{src:'⚡ Grid',kw:d.grid,color:T.purple,active:d.grid>0},{src:'🔧 Generator',kw:0,color:T.red,active:false}]
+        .map((sc,i)=>React.createElement('div',{key:i,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderTop:i>0?`1px solid ${T.b1}`:'none'}},
+          React.createElement('div',{style:{width:20,height:20,borderRadius:4,background:sc.active?sc.color+'33':T.s3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:sc.active?sc.color:T.t3,fontWeight:700}},i+1),
+          React.createElement('span',{style:{flex:1,fontSize:13}},sc.src),
+          sc.active&&React.createElement('span',{style:s.tag(T.green)},'Active'),
+          React.createElement('span',{style:{fontFamily:T.mono,fontSize:12,color:sc.active?sc.color:T.t3}},`${sc.kw.toFixed(1)} kW`)
+        ))
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Reasoning Log'),
+      d.agentLog.slice(0,3).map(l=>React.createElement('div',{key:l.id,style:{borderTop:`1px solid ${T.b1}`,paddingTop:8,marginTop:8}},
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between'}},
+          React.createElement('div',{style:{display:'flex',gap:6,alignItems:'center'}},
+            React.createElement('span',{style:s.tag(l.agent==='EOA'?T.amber:T.cyan)},l.agent),
+            React.createElement('span',{style:{fontSize:12,fontWeight:500}},l.action)
+          ),
+          React.createElement('span',{style:{fontSize:10,color:T.t3}},l.time)
+        ),
+        React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:3,lineHeight:1.5}},l.reason),
+        l.saving>0&&React.createElement('div',{style:{fontSize:11,color:T.green,marginTop:2}},`↓ Saved AED ${l.saving.toFixed(2)}`)
+      ))
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Autonomy Levels'),
+      [['Climate & Comfort',4],['Energy Switching',5],['Grid Flex / DR',4],['Billing Optimisation',5]].map(([l,v])=>
+        React.createElement('div',{key:l,style:{marginBottom:10}},
+          React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:4}},
+            React.createElement('span',{style:{fontSize:12}},l),
+            React.createElement('span',{style:{fontFamily:T.mono,fontSize:11,color:T.cyan}},`${v}/5`)
+          ),
+          React.createElement('input',{type:'range',min:1,max:5,defaultValue:v,style:{width:'100%',height:4,borderRadius:2,background:T.s3,outline:'none',WebkitAppearance:'none'}})
+        )
+      )
+    )
+  );
+
+  // ── FORECAST ──────────────────────────────────────────────────────────────
+  const PageForecast=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+    React.createElement(Card,{style:{background:'linear-gradient(135deg,#F59E0B0A,#0E1420)'}},
+      React.createElement('div',{style:{fontSize:10,color:T.amber,fontWeight:600,letterSpacing:.5,marginBottom:4}},"TODAY'S SOLAR FORECAST · DUBAI"),
+      React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}},
+        React.createElement('div',null,
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.amber}},'22.4 kWh'),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'Peak 1pm–3pm · Best load window')
+        ),
+        React.createElement('div',{style:{textAlign:'right'}},
+          React.createElement('div',{style:{fontSize:11,color:T.t2}},'Grid Independence'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:20,fontWeight:700,color:T.green}},'78%')
+        )
+      )
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'24h Production Curve'),
+      React.createElement('div',{style:{display:'flex',alignItems:'flex-end',gap:2,height:80}},
+        d.history.map((h,i)=>React.createElement('div',{key:i,style:{flex:1,display:'flex',flexDirection:'column',justifyContent:'flex-end'}},
+          React.createElement('div',{style:{background:h.hour>=12&&h.hour<=16?T.amber:T.amber+'44',borderRadius:'2px 2px 0 0',height:`${(h.solar/6)*70}px`,minHeight:h.solar>.1?2:0}})
+        ))
+      ),
+      React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginTop:4}},
+        [0,6,12,18,23].map(h=>React.createElement('span',{key:h,style:{fontSize:10,color:T.t3}},`${h}h`))
+      ),
+      React.createElement('div',{style:{marginTop:8,padding:'6px 10px',background:'#F59E0B11',borderRadius:6,border:'1px solid #F59E0B22'}},
+        React.createElement('span',{style:{fontSize:11,color:T.amber}},'Best load window: 12:00–17:00 (solar ≥ 5 kW)')
+      )
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'7-Day Forecast'),
+      ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day,i)=>
+        React.createElement('div',{key:day,style:{display:'flex',alignItems:'center',gap:10,padding:'7px 0',borderTop:i>0?`1px solid ${T.b1}`:'none'}},
+          React.createElement('span',{style:{width:30,fontSize:11,color:T.t2}},day),
+          React.createElement('span',{style:{fontSize:16}},i===2?'🌤':'☀️'),
+          React.createElement('span',{style:{fontSize:11,color:T.t2}},`${36+i}°C`),
+          React.createElement('div',{style:{flex:1,height:4,background:T.s3,borderRadius:2,overflow:'hidden'}},
+            React.createElement('div',{style:{height:'100%',width:`${((15+Math.sin(i)*3)/25)*100}%`,background:T.amber,borderRadius:2}})
+          ),
+          React.createElement('span',{style:{fontFamily:T.mono,fontSize:11,color:T.amber,width:50,textAlign:'right'}},`${(15+Math.sin(i)*3).toFixed(1)} kWh`),
+          React.createElement('span',{style:s.tag(T.green)},`${70+i*3}%`)
+        )
+      )
+    ),
+    React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+      React.createElement(Card,null,
+        React.createElement('div',{style:s.label},'CO₂ OFFSET'),
+        React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.green,marginTop:4}},'128 kg'),
+        React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'= 6 trees this month')
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:s.label},'SOLAR YIELD'),
+        React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.amber,marginTop:4}},'AED 82'),
+        React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'Saved this month')
+      )
+    )
+  );
+
+  // ── SCHEDULER ─────────────────────────────────────────────────────────────
+  const PageScheduler=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+    React.createElement(Card,null,
+      React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+        React.createElement('span',{style:{fontSize:12,fontWeight:600}},'Smart Scheduler · Today'),
+        React.createElement(Btn,{bg:T.cyan,color:'#000',onClick:()=>{},style:{fontSize:11,borderRadius:8,padding:'6px 12px'}},'✨ AI Plan')
+      )
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:11,color:T.t2,marginBottom:8}},'Timeline · Solar overlay in amber'),
+      React.createElement('div',{style:{position:'relative',height:60}},
+        React.createElement('div',{style:{position:'absolute',top:0,left:'25%',width:'50%',height:'100%',background:'linear-gradient(90deg,transparent,#F59E0B22,#F59E0B44,#F59E0B22,transparent)',borderRadius:4}}),
+        [
+          {device:'EV Charging',time:'12:30',dur:180,status:'active'},
+          {device:'Pool Pump',time:'13:00',dur:120,status:'done'},
+          {device:'Washing Machine',time:'14:00',dur:90,status:'pending'},
+          {device:'Dishwasher',time:'15:30',dur:60,status:'pending'},
+        ].map((sc,i)=>{
+          const sh=parseInt(sc.time.split(':')[0])+parseInt(sc.time.split(':')[1])/60;
+          const colors={active:T.green,pending:T.purple,done:'#4A5568'};
+          return React.createElement('div',{key:i,style:{position:'absolute',top:i*14,left:`${(sh/24)*100}%`,width:`${(sc.dur/1440)*100}%`,height:11,background:colors[sc.status]+'44',border:`1px solid ${colors[sc.status]}`,borderRadius:2}},
+            React.createElement('span',{style:{fontSize:8,color:'white',padding:'0 2px',lineHeight:'11px',display:'block',overflow:'hidden',whiteSpace:'nowrap'}},sc.device)
+          );
+        }),
+        React.createElement('div',{style:{position:'absolute',bottom:0,left:0,right:0,display:'flex',justifyContent:'space-between'}},
+          [0,6,12,18,24].map(h=>React.createElement('span',{key:h,style:{fontSize:8,color:T.t3}},`${h}h`))
+        )
+      )
+    ),
+    ...[
+      {device:'EV Charging',time:'12:30',dur:180,trigger:'Solar excess',status:'active',saving:4.20},
+      {device:'Pool Pump',time:'13:00',dur:120,trigger:'Solar peak',status:'done',saving:1.80},
+      {device:'Washing Machine',time:'14:00',dur:90,trigger:'Solar > 3kW',status:'pending',saving:2.10},
+      {device:'Dishwasher',time:'15:30',dur:60,trigger:'Solar peak window',status:'pending',saving:1.40},
+    ].map(sc=>React.createElement(Card,{key:sc.device},
+      React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
+        React.createElement('div',null,
+          React.createElement('div',{style:{fontSize:13,fontWeight:600}},sc.device),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},`${sc.time} · ${sc.dur} min · ${sc.trigger}`)
+        ),
+        React.createElement('div',{style:{textAlign:'right'}},
+          React.createElement('span',{style:s.tag(sc.status==='active'?T.green:sc.status==='done'?T.amber:T.purple)},sc.status),
+          sc.saving>0&&React.createElement('div',{style:{fontSize:11,color:T.green,marginTop:4}},`AED ${sc.saving.toFixed(2)} saved`)
+        )
+      )
+    ))
+  );
+
+  // ── GRID ──────────────────────────────────────────────────────────────────
+  const PageGrid=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+    React.createElement(Card,{style:{background:'#6366F108',border:'1px solid #6366F122'}},
+      React.createElement('div',{style:{fontSize:10,color:T.purple,fontWeight:600,letterSpacing:.5}},'ENROLLED · DEWA DEMAND RESPONSE'),
+      React.createElement('div',{style:{fontSize:14,fontWeight:600,marginTop:4}},'OpenADR 2.0b · Full Autonomy'),
+      React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'Auto-participate if saving ≥ AED 5.00 per event')
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Active Grid Events'),
+      [{type:'Price Alert',time:'14:00–16:00',price:'38 fils/kWh',saving:'AED 8.40',status:'pending'},
+       {type:'Voluntary DR',time:'18:00–20:00',price:'Peak',saving:'AED 4.20',status:'active'}
+      ].map((e,i)=>React.createElement(Card2,{key:i,style:{marginBottom:8,border:'1px solid #6366F122'}},
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between'}},
+          React.createElement('span',{style:s.tag(T.purple)},e.type),
+          React.createElement('span',{style:s.tag(T.green)},`+${e.saving}`)
+        ),
+        React.createElement('div',{style:{fontSize:12,marginTop:6}},`${e.time} · ${e.price}`),
+        React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},e.status==='active'?'✓ Auto-participating (EOA)':'⏳ Awaiting approval')
+      ))
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Participation History'),
+      [{date:'03 May',type:'Voluntary DR',dur:'2h',saved:7.80,kwh:4.2},
+       {date:'01 May',type:'Price Alert',dur:'3h',saved:11.20,kwh:6.1},
+       {date:'28 Apr',type:'Emergency',dur:'1h',saved:4.10,kwh:2.3}
+      ].map((h,i)=>React.createElement('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderTop:i>0?`1px solid ${T.b1}`:'none'}},
+        React.createElement('div',null,
+          React.createElement('div',{style:{fontSize:12}},`${h.date} · ${h.type}`),
+          React.createElement('div',{style:{fontSize:11,color:T.t2}},`${h.dur} · ${h.kwh} kWh shed`)
+        ),
+        React.createElement('span',{style:{color:T.green,fontFamily:T.mono,fontSize:13}},`+AED ${h.saved.toFixed(2)}`)
+      ))
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{display:'flex',justifyContent:'space-between'}},
+        React.createElement('div',null,
+          React.createElement('div',{style:s.label},'TOTAL EARNINGS'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.green,marginTop:4}},'AED 127.40'),
+          React.createElement('div',{style:{fontSize:11,color:T.t2}},'This year · 18 events')
+        ),
+        React.createElement('div',{style:{textAlign:'right'}},
+          React.createElement('div',{style:s.label},'RANKING'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.purple,marginTop:4}},'Top 12%'),
+          React.createElement('div',{style:{fontSize:11,color:T.t2}},'In your area')
+        )
+      )
+    )
+  );
+
+  // ── BILLING ───────────────────────────────────────────────────────────────
+  const PageBilling=()=>{
+    const maxB=Math.max(...d.bills.map(b=>b.amount));
+    return React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+      React.createElement(Card,null,
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
+          React.createElement('div',null,
+            React.createElement('div',{style:s.label},'THIS MONTH PROJECTION'),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.cyan,marginTop:4}},'AED 528'),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'vs AED 712 without OpLiv')
+          ),
+          React.createElement('div',{style:{textAlign:'right'}},
+            React.createElement('div',{style:s.label},'SAVED'),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.green,marginTop:4}},'AED 184')
+          )
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:8}},'DEWA Slab Tracker'),
+        React.createElement('div',{style:{fontSize:11,color:T.t2,marginBottom:6}},'1,680 of 2,000 kWh · Current: 28 fils/kWh'),
+        React.createElement('div',{style:{height:8,background:T.s3,borderRadius:4,overflow:'hidden',marginBottom:4}},
+          React.createElement('div',{style:{height:'100%',width:'84%',background:'linear-gradient(90deg,#10B981,#F59E0B)',borderRadius:4}})
+        ),
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:10,color:T.t3}},
+          ['0·23f','1000·28f','2000·33f','4000·38f'].map(l=>React.createElement('span',{key:l},l))
+        ),
+        React.createElement('div',{style:{marginTop:8,padding:'6px 10px',background:'#F59E0B11',borderRadius:6,border:'1px solid #F59E0B22'}},
+          React.createElement('span',{style:{fontSize:11,color:T.amber}},'⚠️ 320 kWh from next slab — Slab-Saver mode active')
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Bill History'),
+        React.createElement('div',{style:{display:'flex',gap:4,alignItems:'flex-end',height:70,marginBottom:8}},
+          d.bills.map((b,i)=>React.createElement('div',{key:i,style:{flex:1,display:'flex',flexDirection:'column',gap:1}},
+            React.createElement('div',{style:{width:'100%',background:'#6366F133',borderRadius:'2px 2px 0 0',height:`${(b.savings/maxB)*60}px`}}),
+            React.createElement('div',{style:{width:'100%',background:'#00D4A844',height:`${((b.amount-b.savings)/maxB)*60}px`}})
+          ))
+        ),
+        d.bills.map((b,i)=>React.createElement('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderTop:i>0?`1px solid ${T.b1}`:'none'}},
+          React.createElement('span',{style:{fontSize:12}},b.month),
+          React.createElement('span',{style:{fontSize:11,color:T.t2}},`${b.kwh} kWh`),
+          React.createElement('span',{style:{fontFamily:T.mono,fontSize:12}},`AED ${b.amount}`),
+          React.createElement('span',{style:{color:T.green,fontSize:11}},`-${b.savings}`)
+        ))
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:8}},'Upload Bill'),
+        React.createElement('div',{style:{border:`2px dashed ${T.b2}`,borderRadius:8,padding:20,textAlign:'center'}},
+          React.createElement('div',{style:{fontSize:24,marginBottom:6}},'📄'),
+          React.createElement('div',{style:{fontSize:12,color:T.t2}},'Drop DEWA bill PDF or image'),
+          React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:()=>{},style:{marginTop:10,fontSize:11,border:`1px solid ${T.b2}`,borderRadius:8}},'Browse Files')
+        )
+      )
+    );
+  };
+
+  // ── DEVICE LIBRARY ────────────────────────────────────────────────────────
+  const PageLibrary=()=>{
+    if(connDev){
+      const isDone=connDone.includes(connDev.id);
+      return React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+        React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:()=>setConnDev(null),style:{alignSelf:'flex-start',fontSize:11,border:`1px solid ${T.b2}`,borderRadius:8}},'← Back to Library'),
+        React.createElement(Card,{style:{border:`1px solid ${connDev.color}33`}},
+          React.createElement('div',{style:{display:'flex',gap:12,alignItems:'center',marginBottom:14}},
+            React.createElement('div',{style:{width:52,height:52,background:`${connDev.color}18`,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:26,border:`1px solid ${connDev.color}33`}},connDev.logo),
+            React.createElement('div',null,
+              React.createElement('div',{style:{fontSize:16,fontWeight:700}},connDev.name),
+              React.createElement('div',{style:{fontSize:12,color:T.t2}},connDev.sub),
+              React.createElement('span',{style:{...s.tag(connDev.color),marginTop:4,display:'inline-block'}},connDev.protocol)
+            )
+          ),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginBottom:6}},'Select model:'),
+          React.createElement('div',{style:{display:'flex',gap:5,flexWrap:'wrap',marginBottom:14}},
+            connDev.models.map((mo,i)=>React.createElement('button',{key:i,onClick:()=>setConnMod(i),style:{fontSize:10,padding:'4px 8px',borderRadius:5,border:`1px solid ${connMod===i?connDev.color:T.b1}`,background:connMod===i?`${connDev.color}22`:'transparent',color:connMod===i?connDev.color:T.t2,cursor:'pointer',fontFamily:T.font}},mo))
+          )
+        ),
+        !connLoading&&!isDone&&React.createElement(Card,null,
+          React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:4}},`Step ${connStep+1} of ${connDev.fields.length} — ${connDev.fields[connStep].l}`),
+          React.createElement('div',{style:{height:3,background:T.s3,borderRadius:2,marginBottom:12,overflow:'hidden'}},
+            React.createElement('div',{style:{height:'100%',width:`${((connStep+1)/connDev.fields.length)*100}%`,background:T.cyan,borderRadius:2,transition:'width .3s'}})
+          ),
+          React.createElement('input',{type:connDev.fields[connStep].t,placeholder:connDev.fields[connStep].p,value:connVals[connStep]||'',onChange:e=>setConnVals(v=>({...v,[connStep]:e.target.value})),style:{...s.input,marginBottom:10}}),
+          connStep===connDev.fields.length-1&&React.createElement('div',{style:{padding:'8px 10px',background:'#F59E0B11',borderRadius:6,border:'1px solid #F59E0B22',marginBottom:10}},
+            React.createElement('span',{style:{fontSize:11,color:T.amber}},`💡 ${connDev.tip}`)
+          ),
+          React.createElement('div',{style:{display:'flex',gap:8}},
+            connStep>0&&React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:()=>setConnStep(s=>s-1),style:{border:`1px solid ${T.b2}`,borderRadius:8,fontSize:12}},'← Back'),
+            React.createElement(Btn,{bg:T.cyan,color:'#000',onClick:doConn,style:{flex:1,borderRadius:8,fontSize:13}},
+              connStep<connDev.fields.length-1?'Next →':'Test & Connect'
+            )
+          )
+        ),
+        connLoading&&React.createElement(Card,{style:{textAlign:'center',padding:30}},
+          React.createElement('div',{style:{fontSize:28,marginBottom:10,animation:'spin 1s linear infinite'}},'⚡'),
+          React.createElement('div',{style:{fontSize:13,color:T.t2}},`Testing connection to ${connDev.name}…`),
+          React.createElement('div',{style:{fontSize:11,color:T.t3,marginTop:4}},'Reading live data from device')
+        ),
+        isDone&&React.createElement(Card,{style:{background:'#10B98111',border:'1px solid #10B98133',textAlign:'center',padding:24}},
+          React.createElement('div',{style:{fontSize:32,marginBottom:8}},'✓'),
+          React.createElement('div',{style:{fontSize:14,fontWeight:700,color:T.green}},'Connected Successfully!'),
+          React.createElement('div',{style:{fontSize:12,color:T.t2,marginTop:4}},`${connDev.name} · ${connDev.models[connMod]}`),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'Live data: Solar 4.82 kW · No faults detected'),
+          React.createElement(Btn,{bg:T.cyan,color:'#000',onClick:()=>setConnDev(null),style:{marginTop:14,fontSize:12,borderRadius:8}},'← Back to Library')
+        )
+      );
+    }
+    if(libSel){
+      return React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+        React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:()=>setLibSel(null),style:{alignSelf:'flex-start',fontSize:11,border:`1px solid ${T.b2}`,borderRadius:8}},'← Back'),
+        React.createElement(Card,{style:{border:`1px solid ${libSel.color}33`}},
+          React.createElement('div',{style:{display:'flex',gap:12,alignItems:'flex-start',marginBottom:16}},
+            React.createElement('div',{style:{width:56,height:56,background:`${libSel.color}18`,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,border:`1px solid ${libSel.color}33`,flexShrink:0}},libSel.logo),
+            React.createElement('div',{style:{flex:1}},
+              React.createElement('div',{style:{fontSize:17,fontWeight:700}},libSel.name),
+              React.createElement('div',{style:{fontSize:12,color:T.t2}},libSel.sub),
+              React.createElement('div',{style:{display:'flex',gap:6,marginTop:6,flexWrap:'wrap'}},
+                React.createElement('span',{style:s.tag(T.purple)},libSel.protocol),
+                React.createElement('span',{style:s.tag(T.cyan)},libSel.region),
+                connDone.includes(libSel.id)&&React.createElement('span',{style:s.tag(T.green)},'✓ Connected')
+              )
+            )
+          ),
+          React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:6}},'Available Models'),
+          React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:4,marginBottom:14}},
+            libSel.models.map((mo,i)=>React.createElement('div',{key:i,style:{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',background:T.s3,borderRadius:6}},
+              React.createElement('span',{style:{width:8,height:8,borderRadius:'50%',background:libSel.color,flexShrink:0}}),
+              React.createElement('span',{style:{fontSize:12}},mo)
+            ))
+          ),
+          React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:6}},'Supported Features'),
+          React.createElement('div',{style:{display:'flex',gap:5,flexWrap:'wrap',marginBottom:14}},
+            libSel.features.map((f,i)=>React.createElement('span',{key:i,style:s.tag(T.green)},f))
+          ),
+          React.createElement('div',{style:{padding:'8px 10px',background:'#F59E0B11',borderRadius:6,border:'1px solid #F59E0B22',marginBottom:14}},
+            React.createElement('span',{style:{fontSize:11,color:T.amber}},`💡 ${libSel.tip}`)
+          ),
+          React.createElement(Btn,{bg:T.cyan,color:'#000',onClick:()=>startConn(libSel),style:{width:'100%',fontSize:13,borderRadius:8,padding:'11px'}},
+            connDone.includes(libSel.id)?'✓ Connected — Reconnect':'Connect This Device →'
+          )
+        )
+      );
+    }
+    return React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+      React.createElement(Card,{style:{padding:'10px 14px',background:'linear-gradient(135deg,#0E1420,#141B2D)'}},
+        React.createElement('div',{style:{fontSize:10,color:T.cyan,fontWeight:600,letterSpacing:.5,marginBottom:2}},'GLOBAL DEVICE LIBRARY'),
+        React.createElement('div',{style:{fontSize:12,color:T.t2}},`${DEVICES.length} devices · ${libCats.length-1} categories · Universal protocols`)
+      ),
+      React.createElement('input',{value:libSearch,onChange:e=>setLibSearch(e.target.value),placeholder:'🔍  Search by brand, type, or protocol…',style:{...s.input,borderRadius:10,padding:'10px 14px'}}),
+      React.createElement('div',{style:{display:'flex',gap:5,flexWrap:'wrap'}},
+        libCats.map(c=>React.createElement('button',{key:c,onClick:()=>setLibCat(c),style:{fontSize:10,padding:'4px 10px',borderRadius:20,border:`1px solid ${libCat===c?(catColors[c]||T.cyan):T.b1}`,background:libCat===c?`${catColors[c]||T.cyan}22`:'transparent',color:libCat===c?(catColors[c]||T.cyan):T.t2,cursor:'pointer',fontFamily:T.font,fontWeight:600}},c))
+      ),
+      React.createElement('div',{style:{fontSize:11,color:T.t3}},`${filteredDevs.length} device${filteredDevs.length!==1?'s':''} found`),
+      ...filteredDevs.map(m=>React.createElement(Card,{key:m.id,style:{border:`1px solid ${connDone.includes(m.id)?'#10B98133':T.b1}`,cursor:'pointer'},onClick:()=>setLibSel(m)},
+        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:12}},
+          React.createElement('div',{style:{width:44,height:44,background:`${m.color}18`,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,border:`1px solid ${m.color}33`,flexShrink:0}},m.logo),
+          React.createElement('div',{style:{flex:1,minWidth:0}},
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
+              React.createElement('div',{style:{fontSize:13,fontWeight:700}},m.name),
+              connDone.includes(m.id)&&React.createElement('span',{style:{...s.tag(T.green),fontSize:9}},'✓ CONNECTED')
+            ),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:1}},`${m.sub} · ${m.models.length} model${m.models.length!==1?'s':''}`),
+            React.createElement('div',{style:{display:'flex',gap:4,marginTop:4,flexWrap:'wrap'}},
+              React.createElement('span',{style:{...s.tag(m.color),fontSize:9}},m.cat),
+              React.createElement('span',{style:{...s.tag(T.purple),fontSize:9,maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},m.protocol.split('+')[0].trim()),
+              React.createElement('span',{style:{...s.tag(T.cyan),fontSize:9}},m.region)
+            )
+          ),
+          React.createElement(Btn,{bg:T.cyan,color:'#000',onClick:e=>{e.stopPropagation();startConn(m);},style:{fontSize:11,padding:'6px 12px',borderRadius:8,flexShrink:0}},connDone.includes(m.id)?'✓':'Connect')
+        ),
+        React.createElement('div',{style:{display:'flex',gap:4,flexWrap:'wrap',marginTop:8,paddingTop:7,borderTop:`1px solid ${T.b1}`}},
+          m.features.slice(0,4).map((f,i)=>React.createElement('span',{key:i,style:{fontSize:9,padding:'2px 6px',borderRadius:4,background:T.s3,color:T.t2}},f)),
+          m.features.length>4&&React.createElement('span',{style:{fontSize:9,color:T.t3}},`+${m.features.length-4} more`)
+        )
+      )),
+      React.createElement(Card2,{style:{textAlign:'center'}},
+        React.createElement('div',{style:{fontSize:12,color:T.t2,marginBottom:4}},'Device not listed?'),
+        React.createElement('div',{style:{fontSize:11,color:T.t3,marginBottom:10}},'Add any device via Modbus, MQTT, REST, BACnet, or Zigbee manually'),
+        React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:()=>{},style:{fontSize:11,border:`1px solid ${T.b2}`,borderRadius:8}},'+ Add Custom Device')
+      )
+    );
+  };
+
+  // ── AGENTS ────────────────────────────────────────────────────────────────
+  const PageAgents=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+    React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+      [{name:'Home Assistant',short:'HAA',state:'Comfort-Active',last:'Eco mode Guest Bedroom AC',color:T.cyan,icon:'⌂'},
+       {name:'Energy Operator',short:'EOA',state:'Solar-Primary',last:'Battery charge boosted',color:T.amber,icon:'◉'}
+      ].map(a=>React.createElement(Card,{key:a.short,style:{border:`1px solid ${a.color}22`}},
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between'}},
+          React.createElement('span',{style:{fontSize:18,color:a.color}},a.icon),
+          React.createElement('span',{style:s.tag(a.color)},'● Active')
+        ),
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginTop:6}},a.name),
+        React.createElement('div',{style:{fontSize:10,color:T.t2,marginTop:2}},a.state),
+        React.createElement(Sep,null),
+        React.createElement('div',{style:{fontSize:11,color:T.t2}},a.last)
+      ))
+    ),
+    d.hitl.length>0&&React.createElement('div',null,
+      React.createElement('div',{style:{fontSize:10,color:T.t2,marginBottom:8,fontWeight:600,letterSpacing:.5}},'PENDING APPROVAL'),
+      d.hitl.map(h=>React.createElement(Card,{key:h.id,style:{border:'1px solid #6366F133'}},
+        React.createElement('div',{style:{display:'flex',gap:8,alignItems:'flex-start'}},
+          React.createElement('span',{style:{color:T.amber,fontSize:16}},'◆'),
+          React.createElement('div',{style:{flex:1}},
+            React.createElement('div',{style:{fontSize:13,fontWeight:600}},h.title),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:3,lineHeight:1.5}},h.reason),
+            React.createElement('span',{style:{...s.tag(T.green),marginTop:6,display:'inline-block'}},h.impact),
+            React.createElement('div',{style:{height:3,background:T.s3,borderRadius:2,marginTop:8,overflow:'hidden'}},
+              React.createElement('div',{style:{height:'100%',width:`${(h.timeout/420)*100}%`,background:T.purple,transition:'width 2s linear'}})
+            ),
+            React.createElement('div',{style:{display:'flex',gap:6,marginTop:8}},
+              React.createElement(Btn,{bg:'#10B98122',color:T.green,onClick:()=>resolveHitl(h.id,'approve'),style:{flex:1,fontSize:11,border:'1px solid #10B98133',borderRadius:7}},'✓ Approve'),
+              React.createElement(Btn,{bg:'#EF444422',color:T.red,onClick:()=>resolveHitl(h.id,'reject'),style:{flex:1,fontSize:11,border:'1px solid #EF444433',borderRadius:7}},'✗ Reject')
+            )
+          )
+        )
+      ))
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Activity Feed'),
+      d.agentLog.map(l=>React.createElement('div',{key:l.id,style:{display:'flex',gap:8,padding:'8px 0',borderTop:`1px solid ${T.b1}`,alignItems:'flex-start'}},
+        React.createElement('span',{style:{fontSize:10,color:T.t3,fontFamily:T.mono,width:36,flexShrink:0,marginTop:2}},l.time),
+        React.createElement('div',{style:{flex:1}},
+          React.createElement('div',{style:{display:'flex',gap:6,alignItems:'center',marginBottom:2}},
+            React.createElement('span',{style:s.tag(l.agent==='EOA'?T.amber:T.cyan)},l.agent),
+            React.createElement('span',{style:{fontSize:12}},l.action)
+          ),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,lineHeight:1.4}},l.reason)
+        ),
+        l.saving>0&&React.createElement('span',{style:{fontSize:11,color:T.green,fontFamily:T.mono}},`+${l.saving.toFixed(2)}`)
+      ))
+    )
+  );
+
+  // ── ALERTS ────────────────────────────────────────────────────────────────
+  const PageAlerts=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+    ...[{type:'info',msg:'Solar production 12% above forecast today',time:'2m ago',agent:'EOA'},
+       {type:'success',msg:'EV charging shifted to solar window — saved AED 4.20',time:'18m ago',agent:'EOA'},
+       {type:'warn',msg:'Guest Bedroom AC left on — room empty 45 min',time:'1h ago',agent:'HAA'},
+    ].map((a,i)=>React.createElement(Card,{key:i,style:{display:'flex',gap:10,alignItems:'flex-start',borderLeft:`3px solid ${a.type==='info'?T.blue:a.type==='success'?T.green:T.amber}`}},
+      React.createElement('span',{style:{fontSize:16}},a.type==='success'?'✓':a.type==='warn'?'⚠':'ℹ'),
+      React.createElement('div',{style:{flex:1}},
+        React.createElement('div',{style:{fontSize:12}},a.msg),
+        React.createElement('div',{style:{fontSize:11,color:T.t3,marginTop:3}},`${a.agent} · ${a.time}`)
+      )
+    )),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'WhatsApp Reports'),
+      [['Daily Morning Report (8:00 AM)',true],['Real-time Agent Alerts',true],['Slab Boundary Warnings',true]].map(([l,on],i)=>
+        React.createElement('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
+          React.createElement('span',{style:{fontSize:12}},l),
+          React.createElement(Toggle,{on,onClick:()=>{}})
+        )
+      ),
+      React.createElement(Sep,null),
+      React.createElement('div',{style:{display:'flex',gap:8}},
+        React.createElement('input',{defaultValue:'+971 50 000 0000',style:{...s.input,flex:1}}),
+        React.createElement(Btn,{bg:T.cyan,color:'#000',onClick:()=>{},style:{fontSize:11,borderRadius:8,padding:'6px 12px'}},'Verify')
+      )
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Maintenance Schedule'),
+      [['☀️','Solar Panel Cleaning','12 days'],['⚡','Inverter Inspection','45 days'],['🔧','Generator Service','3 months'],['❄️','AC Filter Clean','8 days']].map(([icon,item,due],i)=>
+        React.createElement('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderTop:i>0?`1px solid ${T.b1}`:'none'}},
+          React.createElement('span',{style:{fontSize:13}},`${icon} ${item}`),
+          React.createElement('span',{style:s.tag(T.amber)},`Due in ${due}`)
+        )
+      )
+    )
+  );
+
+  // ── PROFILE ───────────────────────────────────────────────────────────────
+  const PageProfile=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+    React.createElement(Card,{style:{display:'flex',gap:14,alignItems:'center'}},
+      React.createElement('div',{style:{width:52,height:52,borderRadius:'50%',background:'linear-gradient(135deg,#00D4A8,#6366F1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,fontWeight:700,color:'#000'}},user.name.charAt(0).toUpperCase()),
+      React.createElement('div',null,
+        React.createElement('div',{style:{fontSize:16,fontWeight:600}},user.name),
+        React.createElement('div',{style:{fontSize:12,color:T.t2}},user.email),
+        user.demo&&React.createElement('div',{style:{fontSize:11,color:T.amber,marginTop:2}},'Demo Mode — All features unlocked'),
+        React.createElement('span',{style:{...s.tag(T.cyan),marginTop:4,display:'inline-block'}},'Elite · 7-Day Trial')
+      )
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Subscription'),
+      React.createElement('div',{style:{background:'linear-gradient(135deg,#00D4A811,#6366F111)',border:'1px solid #00D4A822',borderRadius:8,padding:12,marginBottom:10}},
+        React.createElement('div',{style:{fontSize:13,fontWeight:600}},'Elite Plan · AED 149/month'),
+        React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'All features · 5 properties · Unlimited family'),
+        React.createElement('div',{style:{fontSize:11,color:T.cyan,marginTop:4}},'7-day trial active')
+      ),
+      [['Dashboard + Monitoring','✓'],['Hossain Controller','✓'],['AI Optimizer + Agents','✓'],['Circuit Architect','✓'],['Multi-property (up to 5)','✓'],['API Access','✓']].map(([f,v])=>
+        React.createElement('div',{key:f,style:{display:'flex',justifyContent:'space-between',padding:'5px 0',borderTop:`1px solid ${T.b1}`,fontSize:12}},
+          React.createElement('span',null,f),React.createElement('span',{style:{color:T.green}},v)
+        )
+      )
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Settings'),
+      [['Currency',user.country==='India'?'INR':'AED'],['Utility',user.country==='UAE'?'DEWA · Dubai':user.country==='India'?'MSEDCL':'Local Utility'],['Language','English'],['Region',user.country||'UAE']].map(([k,v])=>
+        React.createElement('div',{key:k,style:{display:'flex',justifyContent:'space-between',padding:'7px 0',borderTop:`1px solid ${T.b1}`,fontSize:12}},
+          React.createElement('span',{style:{color:T.t2}},k),React.createElement('span',null,v)
+        )
+      )
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},
+        React.createElement('div',null,
+          React.createElement('div',{style:{fontSize:12,fontWeight:600}},'OpSys Telemetry'),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'Sending health data to OpSys support team')
+        ),
+        React.createElement(Toggle,{on:true,onClick:()=>{}})
+      )
+    ),
+    React.createElement(Btn,{bg:'#EF444411',color:T.red,onClick:()=>setUser(null),style:{border:'1px solid #EF444422',borderRadius:10,padding:'10px',fontSize:12,width:'100%'}},'Sign Out')
+  );
+
+  const pages={dashboard:React.createElement(PageDashboard),controller:React.createElement(PageController),circuit:React.createElement(PageCircuit),layout:React.createElement(PageLayout),optimizer:React.createElement(PageOptimizer),forecast:React.createElement(PageForecast),scheduler:React.createElement(PageScheduler),grid:React.createElement(PageGrid),billing:React.createElement(PageBilling),library:React.createElement(PageLibrary),agents:React.createElement(PageAgents),alerts:React.createElement(PageAlerts),profile:React.createElement(PageProfile)};
+
+  return React.createElement('div',{style:{height:'100vh',display:'flex',flexDirection:'column',background:T.bg,overflow:'hidden'}},
+    // TOP BAR
+    React.createElement('div',{style:{background:T.s1,borderBottom:`1px solid ${T.b1}`,padding:'10px 16px',display:'flex',alignItems:'center',gap:12,flexShrink:0,paddingTop:`max(10px, env(safe-area-inset-top))`}},
+      React.createElement('button',{onClick:()=>setSidebar(!sidebar),style:{background:'none',border:'none',color:T.t1,fontSize:20,cursor:'pointer',padding:4,lineHeight:1}},'☰'),
+      React.createElement('div',{style:{flex:1}},
+        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8}},
+          React.createElement('span',{style:{fontSize:16,fontWeight:700,color:T.cyan,letterSpacing:-.5}},'OpLiv'),
+          React.createElement('span',{style:{fontSize:13,color:T.t2}},`/ ${nav.find(n=>n.id===page)?.label}`)
+        )
+      ),
+      d.hitl.length>0&&React.createElement('button',{onClick:()=>go('agents'),style:{background:'#6366F122',border:'1px solid #6366F133',borderRadius:20,padding:'4px 10px',color:T.purple,fontSize:11,cursor:'pointer',fontFamily:T.font,animation:'pulse 2s infinite'}},`◆ ${d.hitl.length} pending`),
+      React.createElement('div',{style:{width:7,height:7,borderRadius:'50%',background:T.green,animation:'pulse 3s infinite'}})
+    ),
+
+    // SIDEBAR
+    sidebar&&React.createElement('div',{style:{position:'fixed',inset:0,zIndex:200,display:'flex'}},
+      React.createElement('div',{style:{width:220,background:T.s1,borderRight:`1px solid ${T.b1}`,display:'flex',flexDirection:'column',paddingTop:`max(0px,env(safe-area-inset-top))`}},
+        React.createElement('div',{style:{padding:'16px 16px 14px',borderBottom:`1px solid ${T.b1}`}},
+          React.createElement('div',{style:{fontSize:22,fontWeight:700,color:T.cyan,letterSpacing:-1}},'OpLiv'),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},`${user.name}'s Villa`)
+        ),
+        React.createElement('div',{style:{flex:1,overflowY:'auto',padding:'8px 0'}},
+          nav.map(n=>React.createElement('button',{key:n.id,onClick:()=>go(n.id),style:{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 16px',background:page===n.id?T.s2:'transparent',border:'none',cursor:'pointer',color:page===n.id?T.cyan:T.t2,fontSize:13,textAlign:'left',borderLeft:page===n.id?`2px solid ${T.cyan}`:'2px solid transparent',fontFamily:T.font,transition:'all .15s'}},
+            React.createElement('span',{style:{width:20,textAlign:'center',fontSize:15}},n.icon),
+            n.label,
+            n.id==='agents'&&d.hitl.length>0&&React.createElement('span',{style:{marginLeft:'auto',background:T.purple,color:'white',borderRadius:10,fontSize:10,padding:'1px 6px'}},d.hitl.length),
+            n.id==='library'&&connDone.length>0&&React.createElement('span',{style:{marginLeft:'auto',background:T.green,color:'white',borderRadius:10,fontSize:10,padding:'1px 6px'}},connDone.length)
+          ))
+        ),
+        React.createElement('div',{style:{padding:'12px 16px',borderTop:`1px solid ${T.b1}`,fontSize:11,color:T.t3}},'OpLiv Elite · v4.0 · Demo')
+      ),
+      React.createElement('div',{style:{flex:1,background:'rgba(0,0,0,0.65)'},onClick:()=>setSidebar(false)})
+    ),
+
+    // CONTENT
+    React.createElement('div',{style:{flex:1,overflowY:'auto',padding:'12px 16px 90px',maxWidth:620,margin:'0 auto',width:'100%'}},
+      pages[page]||React.createElement(PageDashboard,null)
+    ),
+
+    // BOTTOM NAV
+    React.createElement('div',{style:{background:T.s1,borderTop:`1px solid ${T.b1}`,display:'flex',flexShrink:0,paddingBottom:`max(6px,env(safe-area-inset-bottom))`}},
+      [{id:'dashboard',icon:'⌂',label:'Home'},{id:'controller',icon:'◈',label:'Control'},{id:'optimizer',icon:'◉',label:'Optimize'},{id:'agents',icon:'◆',label:'Agents'},{id:'library',icon:'⊙',label:'Devices'}]
+        .map(n=>React.createElement('button',{key:n.id,onClick:()=>go(n.id),style:{flex:1,background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:2,padding:'7px 0',position:'relative'}},
+          React.createElement('span',{style:{fontSize:18,color:page===n.id?T.cyan:T.t3}},n.icon),
+          React.createElement('span',{style:{fontSize:9,color:page===n.id?T.cyan:T.t3}},n.label),
+          n.id==='agents'&&d.hitl.length>0&&React.createElement('span',{style:{position:'absolute',top:5,right:'28%',width:7,height:7,borderRadius:'50%',background:T.purple}}),
+          n.id==='library'&&connDone.length>0&&React.createElement('span',{style:{position:'absolute',top:5,right:'28%',width:7,height:7,borderRadius:'50%',background:T.green}})
+        ))
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script>
+</body>
+</html>
