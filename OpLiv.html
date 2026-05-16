@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#080B14">
-<title>OpLiv — Home Energy Management</title>
+<title>OpLiv · Intelligent Living Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -17,16 +17,19 @@
 html,body{height:100%;overflow:hidden}
 body{font-family:'DM Sans',sans-serif;background:#080B14;color:#E8EAF0}
 #root{height:100%;overflow:hidden}
-::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:2px}
-input,button{font-family:'DM Sans',sans-serif}
+::-webkit-scrollbar{width:3px;height:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:2px}
+input,button,select{font-family:'DM Sans',sans-serif}
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes glow{0%,100%{box-shadow:0 0 20px #00D4A820}50%{box-shadow:0 0 40px #00D4A840}}
+@keyframes tickerPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
 .fade-up{animation:fadeUp 0.35s ease both}
 .fade-in{animation:fadeIn 0.25s ease both}
+.no-scrollbar::-webkit-scrollbar{display:none}
+.no-scrollbar{scrollbar-width:none}
 </style>
 </head>
 <body>
@@ -42,12 +45,31 @@ const T = {
   t1:'#E8EAF0', t2:'#8892A4', t3:'#3D4A5C',
   cyan:'#00D4A8', amber:'#F59E0B', purple:'#6366F1',
   green:'#10B981', red:'#EF4444', blue:'#3B82F6',
+  teal:'#06B6D4', lime:'#84CC16', pink:'#EC4899', orange:'#F97316',
   font:"'DM Sans',sans-serif", mono:"'Space Mono',monospace"
+};
+
+// ─── DEFAULT HA ENTITY MAP ──────────────────────────────────────────────────
+const DEFAULT_HA_MAP = {
+  solar:'sensor.solar_power',
+  battery:'sensor.battery_soc',
+  grid:'sensor.grid_power',
+  home:'sensor.home_power',
+  generator:'sensor.generator_power',
+  temp:'sensor.outdoor_temp',
+  humidity:'sensor.outdoor_humidity',
+  waterFlow:'sensor.water_flow',
+  greywater:'sensor.greywater_tank',
+  rainwater:'sensor.rainwater_tank',
+  gridPrice:'sensor.dewa_price',
+  gridFreq:'sensor.grid_frequency',
+  aqi:'sensor.indoor_aqi',
+  pm25:'sensor.indoor_pm25',
+  co2:'sensor.indoor_co2',
 };
 
 // ─── DEVICE LIBRARY DATA ─────────────────────────────────────────────────────
 const DEVICES = [
-  // SOLAR
   {id:'s1',name:'Huawei',cat:'Solar',sub:'Hybrid Inverter',models:['SUN2000-3/5/6/8/10KTL-M2','SUN2000-12/15/20KTL-M2','SUN2000-100KTL-H1'],protocol:'Modbus TCP + FusionSolar REST',logo:'🟥',region:'Global',color:'#EF4444',fields:[{l:'Plant ID',t:'text',p:'e.g. NE=123456789'},{l:'FusionSolar Username',t:'text',p:'Portal login'},{l:'API Password',t:'password',p:'System generated'},{l:'Inverter Local IP',t:'text',p:'192.168.x.x'}],tip:'Enable Modbus in Settings > Comm > RS485. Port 502.',features:['Real-time kW','Daily kWh','Grid export','Battery SOC','Fault alerts']},
   {id:'s2',name:'Sungrow',cat:'Solar',sub:'Hybrid Inverter',models:['SH3K6/5K/6K/8K/10K-30','SH5.0/6.0/8.0/10RT-V112','SH10/15/20/25RT'],protocol:'Modbus TCP + iSolarCloud REST',logo:'🟧',region:'Global',color:'#F97316',fields:[{l:'iSolarCloud App Key',t:'text',p:'Developer portal'},{l:'App Secret',t:'password',p:''},{l:'Device Serial',t:'text',p:'e.g. A2220000000'},{l:'Local IP',t:'text',p:'192.168.x.x'}],tip:'Enable local Modbus via iSolarCloud app > Device > Communication.',features:['Solar production','Battery management','Export limiting','EV control']},
   {id:'s3',name:'SolarEdge',cat:'Solar',sub:'String + Optimizer',models:['SE3000H/SE5000H/SE7000H','SE10000H/SE17K/SE25K','SE100K/SE150K'],protocol:'SolarEdge Monitoring REST + Modbus',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'Site ID',t:'text',p:'From monitoring portal'},{l:'API Key',t:'text',p:'Settings > API Access'},{l:'Inverter IP (Modbus)',t:'text',p:'192.168.x.x'}],tip:'Generate API key at monitoring.solaredge.com > Admin > API Access.',features:['Per-panel monitoring','Optimizer data','StorEdge battery','Revenue metering']},
@@ -58,26 +80,22 @@ const DEVICES = [
   {id:'s8',name:'Victron Energy',cat:'Solar',sub:'Off-Grid / Hybrid',models:['MultiPlus-II 3–15kVA','Quattro 5–15kVA','BlueSolar MPPT','Cerbo GX'],protocol:'VE.Bus / Modbus TCP + VRM REST',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'VRM Installation ID',t:'text',p:'vrm.victronenergy.com'},{l:'VRM Access Token',t:'text',p:'Profile > API tokens'},{l:'Cerbo GX IP',t:'text',p:'192.168.x.x'}],tip:'Very popular in MEA for off-grid. Cerbo GX is the communication hub.',features:['Off-grid capable','Generator auto-start','ESS energy storage','Full BMS']},
   {id:'s9',name:'GoodWe',cat:'Solar',sub:'Hybrid Inverter',models:['GW3648-EM/GW5048-EM','GW5000-ET/GW8000-ET','GW10K-ET/GW15K-ET'],protocol:'Modbus TCP + SEMS Portal REST',logo:'🟩',region:'Global / Asia',color:'#10B981',fields:[{l:'SEMS Station ID',t:'text',p:'From SEMS portal'},{l:'SEMS Account',t:'text',p:'Email'},{l:'SEMS Password',t:'password',p:''}],tip:'Enable Modbus via SEMS app > Device Settings > Communication.',features:['EPS off-grid','Battery management','PV yield','Smart meter']},
   {id:'s10',name:'SolaX Power',cat:'Solar',sub:'Hybrid Inverter',models:['X1-Hybrid G4 3–6kW','X3-Hybrid G4 5–15kW','X3-MegaPack 30–80kW'],protocol:'SolaX Cloud REST + Modbus TCP',logo:'🟧',region:'Global',color:'#F97316',fields:[{l:'Registration Code',t:'text',p:'From SolaX Cloud'},{l:'Serial Number',t:'text',p:'From inverter label'},{l:'API Token',t:'text',p:'Developer portal'}],tip:'Get token from SolaX Cloud developer page. Local port 502.',features:['Cloud monitoring','Battery control','Force charge/discharge','Grid export control']},
-  // BATTERIES
   {id:'b1',name:'Tesla',cat:'Battery',sub:'Home Battery',models:['Powerwall 2 (13.5 kWh)','Powerwall 3 (13.5 kWh)','Powerwall+'],protocol:'Tesla Owner API + Local Gateway',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'Tesla Account Email',t:'text',p:'Your Tesla account'},{l:'Tesla Password',t:'password',p:''},{l:'Gateway IP',t:'text',p:'192.168.91.1 (default)'}],tip:'Gateway is at 192.168.91.1 when connected to Powerwall WiFi.',features:['Storm watch','Time-based control','Backup reserve','Self-powered mode','VPP']},
   {id:'b2',name:'BYD',cat:'Battery',sub:'LFP Home Battery',models:['Battery-Box Premium HVS 5.1–12.8kWh','Battery-Box Premium HVM 8.3–22.1kWh','LV Flex Lite 2.56kWh'],protocol:'CAN bus / RS485 Modbus + BYD Cloud',logo:'🟦',region:'Global',color:'#1D4ED8',fields:[{l:'Battery Modbus Address',t:'text',p:'Usually 1'},{l:'BYD Serial Number',t:'text',p:'From label'},{l:'Connected Inverter',t:'text',p:'e.g. SMA, Fronius'}],tip:'BYD communicates via CAN/RS485 to inverter. OpLiv reads through inverter API.',features:['LFP chemistry safe','10-year warranty','Stackable','Compatible 15+ inverters']},
   {id:'b3',name:'Pylontech',cat:'Battery',sub:'LFP Rack Battery',models:['US2000C (2.4 kWh)','US3000C (3.5 kWh)','US5000 (4.8 kWh)','Force H1 (14.2 kWh)'],protocol:'CAN bus / RS485 Modbus (BMS)',logo:'🟩',region:'Global / MEA',color:'#10B981',fields:[{l:'CAN/RS485 Address',t:'text',p:'Usually 1'},{l:'Battery Count',t:'text',p:'e.g. 4 stacked'},{l:'Connected Inverter',t:'text',p:'e.g. Victron, Growatt'}],tip:'Very popular in UAE/India for budget off-grid. Stack up to 8 units.',features:['LFP safe chemistry','Stackable 2–46 kWh','Wide inverter support','Built-in BMS']},
   {id:'b4',name:'EcoFlow',cat:'Battery',sub:'Portable / Home Battery',models:['DELTA Pro (3.6kWh)','DELTA Pro Ultra (6kWh)','PowerOcean 5–15kWh'],protocol:'EcoFlow Cloud REST + Local LAN',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'EcoFlow Email',t:'text',p:'App account'},{l:'EcoFlow Password',t:'password',p:''},{l:'Device SN',t:'text',p:'From label or app'}],tip:'Enable LAN control in EcoFlow app for local control without cloud.',features:['Portable + permanent','X-Stream fast charge','Solar input 2400W','App ecosystem']},
   {id:'b5',name:'Alpha ESS',cat:'Battery',sub:'All-in-One Storage',models:['SMILE5 5kW/10.1kWh','STORION-S5','Smile-BAT 5.7kWh Module'],protocol:'Modbus TCP + Alpha Cloud REST',logo:'🟧',region:'Global / Asia',color:'#F97316',fields:[{l:'Alpha Cloud Username',t:'text',p:'Email'},{l:'Password',t:'password',p:''},{l:'System SN',t:'text',p:'From device label'},{l:'Local IP',t:'text',p:'192.168.x.x'}],tip:'Built-in inverter. Enable Modbus via web interface.',features:['All-in-one system','Cloud monitoring','Load shifting','Backup power']},
-  // EV CHARGERS
   {id:'e1',name:'Wallbox',cat:'EV',sub:'Smart EV Charger',models:['Pulsar Plus 7.4kW','Commander 2 22kW','Quasar 2 V2H bidirectional'],protocol:'Local REST + myWallbox Cloud + OCPP 1.6J',logo:'🟩',region:'Global',color:'#10B981',fields:[{l:'myWallbox Email',t:'text',p:'Account email'},{l:'Password',t:'password',p:''},{l:'Charger Serial',t:'text',p:'From label/app'},{l:'Local IP',t:'text',p:'192.168.x.x'}],tip:'Enable Eco-Smart mode for solar-aware charging in the myWallbox app.',features:['Solar charging','Scheduled charging','Load balancing','V2H (Quasar)']},
   {id:'e2',name:'ABB Terra',cat:'EV',sub:'Commercial EV Charger',models:['Terra AC W11/22kW','Terra DC 24/50kW','Terra 184 HPC 180kW'],protocol:'OCPP 1.6/2.0 + ABB Ability REST',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'OCPP Backend URL',t:'text',p:'wss://ocpp.opliv.io (auto)'},{l:'Charger ID',t:'text',p:'From charger config'}],tip:'ABB uses OCPP. OpLiv acts as OCPP backend for full control.',features:['OCPP standard','Dynamic load management','Revenue metering','Fleet control']},
   {id:'e3',name:'Schneider EVlink',cat:'EV',sub:'Smart EV Charger',models:['EVlink Home Smart 7.4kW','EVlink Pro AC 22kW','EVlink DC 24/50kW'],protocol:'OCPP 1.6 + EVlink REST + Modbus TCP',logo:'🟩',region:'Global',color:'#10B981',fields:[{l:'Cloud Username',t:'text',p:'EcoStruxure account'},{l:'Password',t:'password',p:''},{l:'Charger IP',t:'text',p:'192.168.x.x'}],tip:'EcoStruxure EV Charging Expert for fleet. Home via local REST.',features:['Smart grid ready','OCPP compliant','Power sharing','Solar integration']},
   {id:'e4',name:'KEBA',cat:'EV',sub:'Smart EV Charger',models:['KeContact P30 a-series 3.7–22kW','KeContact P30 c-series 22kW'],protocol:'UDP KeContact + Modbus TCP + OCPP',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'Charger IP',t:'text',p:'192.168.x.x'},{l:'UDP Port',t:'text',p:'7090 (default)'}],tip:'KEBA uses UDP protocol. No cloud account needed for local control.',features:['UDP local control','Solar charging','Load balancing','RFID access']},
   {id:'e5',name:'Easee',cat:'EV',sub:'Smart EV Charger',models:['Easee Home 7.4kW','Easee Charge 22kW','Easee Core 22kW'],protocol:'Easee REST + SignalR WebSocket',logo:'🟧',region:'Global',color:'#F97316',fields:[{l:'Easee Username',t:'text',p:'Email'},{l:'Password',t:'password',p:''},{l:'Charger ID',t:'text',p:'e.g. EH123456'}],tip:'Solar charging via smart charging profile in Easee portal.',features:['Solar charging','Dynamic load','Cost-based charging','Energy reporting']},
   {id:'e6',name:'ChargePoint',cat:'EV',sub:'Network EV Charger',models:['Home Flex 50A','CPF25 L2 Commercial','CPE250 DC 62.5kW'],protocol:'ChargePoint REST + OCPP 1.6',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'ChargePoint API Key',t:'text',p:'developer.chargepoint.com'},{l:'Station ID',t:'text',p:'From dashboard'}],tip:'Register at developer.chargepoint.com for API access.',features:['Network connected','Reservations','Energy tracking','Fleet management']},
-  // GENERATORS
   {id:'g1',name:'Cummins',cat:'Generator',sub:'Diesel Generator',models:['C17D6R 17kVA','C22D6R 22kVA','C33D6R 33kVA','C100D5 100kVA','C250D5 250kVA'],protocol:'Modbus RTU PowerCommand + PCCNET Ethernet',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'PowerCommand Panel IP',t:'text',p:'192.168.x.x'},{l:'Modbus Address',t:'text',p:'Usually 1'},{l:'Username',t:'text',p:'Administrator'},{l:'Password',t:'password',p:''}],tip:'Enable PCCNET in PowerCommand HMI. Requires PCCNET interface card.',features:['Auto start/stop','Fuel monitor','Run hours','Transfer switch','Remote start']},
   {id:'g2',name:'Caterpillar (CAT)',cat:'Generator',sub:'Diesel / Gas Generator',models:['C1.5 22kVA','DE22E2 22kVA','C4.4 100kVA','C7.1 200kVA','C13 350kVA'],protocol:'Modbus RTU EMCP 4.4 + Cat Connect REST',logo:'🟧',region:'Global',color:'#F59E0B',fields:[{l:'EMCP Panel IP',t:'text',p:'192.168.x.x'},{l:'Cat Connect Username',t:'text',p:'dealer.cat.com'},{l:'Modbus Slave ID',t:'text',p:'1'}],tip:'EMCP 4.4 required for Modbus. Older EMCP 3.x needs RS485 adapter.',features:['EMCP 4.4 controller','Fleet management','Auto transfer','Remote diagnostics']},
   {id:'g3',name:'Perkins',cat:'Generator',sub:'Diesel Generator',models:['1103A-33G 22kVA','1104A-44TG1 50kVA','1106A-70TAG3 100kVA'],protocol:'Modbus RTU + ComAp InteliGen controller',logo:'🟦',region:'Global / MEA',color:'#1D4ED8',fields:[{l:'ComAp Controller IP',t:'text',p:'192.168.x.x'},{l:'Modbus Address',t:'text',p:'1'},{l:'Controller Password',t:'password',p:''}],tip:'Perkins engines paired with ComAp, Deep Sea, or Woodward controllers.',features:['Auto mains failure','Load sharing','Fuel management','Paralleling']},
   {id:'g4',name:'Kohler',cat:'Generator',sub:'Diesel / Gas Generator',models:['14RESAL 14kW','20RCLB 20kW','38RCLB 38kW','80RCLB 80kW'],protocol:'Modbus RTU Decision-Maker 3500 + Kohler APM',logo:'🟥',region:'Global',color:'#EF4444',fields:[{l:'Decision-Maker IP',t:'text',p:'192.168.x.x'},{l:'Modbus Address',t:'text',p:'1'},{l:'Kohler APM Account',t:'text',p:'Email'}],tip:'Decision-Maker 3500 controller supports Modbus natively.',features:['Auto transfer switch','Load management','Remote monitoring','Predictive maintenance']},
   {id:'g5',name:'Kirloskar',cat:'Generator',sub:'Diesel Generator (India)',models:['KG1-20S 15kVA','KG1-30S 30kVA','KG1-62.5S 62.5kVA','KG1-100S 100kVA'],protocol:'Modbus RTU via Deep Sea / Lovato',logo:'🟩',region:'India / MEA',color:'#10B981',fields:[{l:'Controller Type',t:'text',p:'Deep Sea 7320 / Lovato'},{l:'Controller IP',t:'text',p:'192.168.x.x'},{l:'Modbus Address',t:'text',p:'1'}],tip:'Leading genset brand in India. Most use Deep Sea Electronics controllers.',features:['Auto start AMF','Load sharing','Fuel monitoring','Remote start']},
-  // HVAC
   {id:'h1',name:'Daikin',cat:'HVAC',sub:'Split / VRF System',models:['Stylish FTXA25/35/42/50AW','Emura FTXJ25/35/50MW','VRV 5 Heat Pump','Sky Air Commercial'],protocol:'Daikin Online Controller REST + BACnet',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'Daikin Controller IP',t:'text',p:'192.168.x.x'},{l:'BRP069 Adapter ID',t:'text',p:'From controller label'},{l:'Cloud Username',t:'text',p:'Daikin app account'}],tip:'BRP069B adapter required per indoor unit for local API.',features:['Intelligent Eye','Coanda airflow','Streamer purification','Econo mode']},
   {id:'h2',name:'Mitsubishi Electric',cat:'HVAC',sub:'Split / VRF System',models:['MSZ-LN25VG2 Premium','MSZ-EF35VGK Design','MXZ-3F68VF Multi-split','City Multi VRF'],protocol:'MELCloud REST + MAC-568IF-E interface',logo:'🟥',region:'Global',color:'#EF4444',fields:[{l:'MELCloud Username',t:'text',p:'Email'},{l:'MELCloud Password',t:'password',p:''},{l:'Device ID',t:'text',p:'From MELCloud app'}],tip:'MAC-568IF-E adapter per indoor unit for cloud connection.',features:['Dual Barrier coating','Jet airflow','i-see Sensor','Hyper Heating']},
   {id:'h3',name:'LG Electronics',cat:'HVAC',sub:'Split / Multi / VRF',models:['Artcool Mirror A09FT','Artcool Gallery','Multi F 3–5 zone','Multi V 5 VRF'],protocol:'LG ThinQ REST + AC Smart Controller',logo:'🟥',region:'Global',color:'#EF4444',fields:[{l:'ThinQ Email',t:'text',p:'LG account'},{l:'ThinQ Password',t:'password',p:''},{l:'Device Serial',t:'text',p:'From ThinQ app'}],tip:'Requires Wi-Fi module (PWFMDD200) or LG Smart ThinQ dongle.',features:['AI Energy monitoring','Auto cleaning','Dual Inverter','Energy dashboard']},
@@ -85,14 +103,12 @@ const DEVICES = [
   {id:'h5',name:'Midea',cat:'HVAC',sub:'Split / Ducted / VRF',models:['MSG-09/12/18/24HRN8','All Easy Pro 9–24K','MCA-V VRF','M-Thermal Heat Pump'],protocol:'Midea LAN + MSmartHome REST + Modbus',logo:'🟦',region:'Global / Asia',color:'#3B82F6',fields:[{l:'MSmartHome Email',t:'text',p:'Midea account'},{l:'Password',t:'password',p:''},{l:'Device ID',t:'text',p:'From app'}],tip:'Popular in India and MEA. Own brand includes Comfee, Beko HVAC.',features:['Energy star','Self-clean','MSmartHome','Multi-zone control']},
   {id:'h6',name:'Carrier',cat:'HVAC',sub:'Central / VRF / Chiller',models:['42QHC Infinity Split','40RU Airstage VRF','30XW Water Cooled Chiller'],protocol:'BACnet MS/TP + BACnet/IP + Carrier i-Vu',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'i-Vu Controller IP',t:'text',p:'192.168.x.x'},{l:'BACnet Device ID',t:'text',p:'From controller'},{l:'i-Vu Username',t:'text',p:'admin'}],tip:'Carrier uses BACnet for building integration. i-Vu is the BMS platform.',features:['BACnet native','Predictive maintenance','Variable speed','Energy monitoring']},
   {id:'h7',name:'Panasonic',cat:'HVAC',sub:'Split / Multi / VRF',models:['CS-Z25TKE Etherea','CS-HE15QKE Standard','CS-MZ25WD2EA Multi','PA-AC100KA VRF'],protocol:'Panasonic Comfort Cloud REST + CZ-CAPWFC1',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'Comfort Cloud Email',t:'text',p:'Panasonic account'},{l:'Password',t:'password',p:''},{l:'Device ID',t:'text',p:'From app'}],tip:'CZ-CAPWFC1 Wi-Fi adapter enables Comfort Cloud and local control.',features:['nanoe-X purification','Econavi sensor','WLAN remote']},
-  // METERS
   {id:'m1',name:'Schneider Electric',cat:'Meter',sub:'Smart Energy Meter',models:['iEM3155 80A','iEM3355 80A','iEM3455 100A MID','PM8000 Power Meter'],protocol:'Modbus RTU/TCP + EcoStruxure REST',logo:'🟩',region:'Global',color:'#10B981',fields:[{l:'Meter IP (Modbus TCP)',t:'text',p:'192.168.x.x'},{l:'Modbus Slave ID',t:'text',p:'1–247'}],tip:'iEM series is DIN-rail 3-phase. MID certified for billing. Port 502.',features:['3-phase measurement','Power quality','Harmonics','MID certified','Tariff metering']},
   {id:'m2',name:'ABB',cat:'Meter',sub:'Smart Energy Meter',models:['B23 112-100 3-phase','B21 112-100 1-phase','A43 112-200 MID','M4M 20 Power Analyzer'],protocol:'Modbus RTU/TCP + M2M REST',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'Meter IP',t:'text',p:'192.168.x.x'},{l:'Modbus ID',t:'text',p:'1'}],tip:'M4M 20 is revenue grade. Connect via RS485 to RS485-Ethernet converter.',features:['Revenue metering','Power quality','Demand measurement','Voltage dip']},
   {id:'m3',name:'Eastron SDM',cat:'Meter',sub:'DIN-Rail Energy Meter',models:['SDM120 1-phase Modbus','SDM230 1-phase MID','SDM630 3-phase Modbus','SDM72D MID'],protocol:'Modbus RTU (RS485)',logo:'🟦',region:'Global / MEA / India',color:'#3B82F6',fields:[{l:'RS485 Address',t:'text',p:'1–247'},{l:'Baud Rate',t:'text',p:'9600 (default)'},{l:'RS485-Ethernet Converter IP',t:'text',p:'192.168.x.x'}],tip:'Very popular low-cost DIN meter. Use Elfin EW10 or Waveshare RS485/TCP converter.',features:['Low cost','DIN rail','RS485 Modbus','Import/export','1 & 3 phase']},
   {id:'m4',name:'CLOU',cat:'Meter',sub:'Smart Grid / AMI Meter',models:['CL710K42 Single Phase','CL730K22 3-phase','CL1218 AMI Smart Meter'],protocol:'DLMS/COSEM + Modbus TCP + Optical',logo:'🟦',region:'Asia / MEA',color:'#1D4ED8',fields:[{l:'Meter Serial',t:'text',p:'From label'},{l:'DLMS Password',t:'text',p:'From utility'},{l:'OBIS Code Set',t:'text',p:'IEC 62056'}],tip:'Popular AMI meter across MEA utilities. DLMS protocol is utility-grade.',features:['AMI/AMR compatible','DLMS/COSEM','Tamper detection','Remote disconnect']},
   {id:'m5',name:'Legrand',cat:'Meter',sub:'Smart MCB + Meter',models:['Smart TX3 Circuit Breaker','Drivia Smart Panel','4-module MCB 10–63A'],protocol:'Modbus TCP + Legrand Energy Server REST',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'Energy Server IP',t:'text',p:'192.168.x.x'},{l:'Username',t:'text',p:'admin'},{l:'Password',t:'password',p:''}],tip:'Smart TX3 MCBs replace standard MCBs. Energy Server aggregates data.',features:['Per-circuit smart MCB','Energy per circuit','Remote trip','Cloud management']},
   {id:'m6',name:'Hager',cat:'Meter',sub:'Smart MCB + KNX',models:['KNX Energy Meter','Focus Energy Monitor','SH MCB Smart System'],protocol:'KNX TP + Modbus TCP + Hager Connection',logo:'🟧',region:'Global',color:'#F97316',fields:[{l:'KNX IP Gateway IP',t:'text',p:'192.168.x.x'},{l:'KNX Group Addresses',t:'text',p:'From ETS project'}],tip:'KNX-based. Requires ETS software for commissioning.',features:['KNX native','Per-circuit monitoring','Smart automation','Demand control']},
-  // SMART HOME
   {id:'a1',name:'Xiaomi / Mijia',cat:'Appliance',sub:'Smart Home Ecosystem',models:['Mi Smart Plug WiFi 16A','Mi Smart Bulb Essential','Mijia Robot Vacuum','Mi Air Purifier 4 Pro'],protocol:'Mi Home LAN (MiIO) + Xiaomi Cloud REST',logo:'🟧',region:'Global / Asia',color:'#F97316',fields:[{l:'Mi Home Email',t:'text',p:'Xiaomi account'},{l:'Password',t:'password',p:''},{l:'Country Server',t:'text',p:'cn/de/us/sg/in'}],tip:'Use country=de for UAE/Middle East. Local control via miio library.',features:['10,000+ devices','Local + cloud','Mi Home scenes','Low cost']},
   {id:'a2',name:'Tuya / Smart Life',cat:'Appliance',sub:'Universal IoT Platform',models:['Smart Plugs 10/13/16A','Smart Switches 1/2/3 gang','IR Remote Controller','Smart Sensors'],protocol:'Tuya Cloud REST + Tuya Local LAN + MQTT',logo:'🟦',region:'Global',color:'#1D4ED8',fields:[{l:'Tuya Cloud Access ID',t:'text',p:'From iot.tuya.com'},{l:'Cloud Secret',t:'password',p:''},{l:'Region',t:'text',p:'eu/us/cn/in'}],tip:'Largest IoT platform — powers 300+ brands. Get API key from iot.tuya.com.',features:['300+ sub-brands','Local LAN','Cloud backup','Scene automation']},
   {id:'a3',name:'Samsung SmartThings',cat:'Appliance',sub:'Smart Home Hub',models:['SmartThings Hub v3','SmartThings Station','Samsung Smart Appliances'],protocol:'SmartThings REST + Z-Wave + Zigbee + LAN',logo:'🟦',region:'Global',color:'#1D4ED8',fields:[{l:'SmartThings Token',t:'text',p:'account.smartthings.com'},{l:'Hub ID',t:'text',p:'From SmartThings app'}],tip:'Generate token at account.smartthings.com > Personal Access Tokens.',features:['Z-Wave + Zigbee','Samsung appliances','Complex automations','Energy monitoring']},
@@ -103,10 +119,13 @@ const DEVICES = [
   {id:'a8',name:'Haier / U+',cat:'Appliance',sub:'Smart Appliances',models:['Haier Smart AC Series','Haier Smart Fridge','HW90 Washing Machine','U+ Platform'],protocol:'Haier U+ Platform + HiLink IoT REST',logo:'🟦',region:'Global / MEA',color:'#1D4ED8',fields:[{l:'U+ Email',t:'text',p:'Email'},{l:'Password',t:'password',p:''},{l:'Country',t:'text',p:'AE/IN/GB/US'}],tip:'U+ works across Haier group brands (Haier/Candy/Hoover). UAE optimized.',features:['Full appliance range','U+ scenes','Energy monitoring','Cross-brand']},
   {id:'a9',name:'Wipro iHome',cat:'Switch',sub:'India Smart Devices',models:['WiFi Smart Plug 10A','Smart Switch 2 Module','Next 9W Smart Bulb'],protocol:'Tuya Cloud + Local LAN',logo:'🟩',region:'India',color:'#10B981',fields:[{l:'Tuya Access ID',t:'text',p:'iot.tuya.com'},{l:'Secret',t:'password',p:''},{l:'Region',t:'text',p:'in'}],tip:'Wipro uses Tuya. Connect via Tuya API same as Smart Life.',features:['India certified','BEE star rated','ISI mark','Tuya platform']},
   {id:'a10',name:'Polycab iHome',cat:'Switch',sub:'India Wiring Devices',models:['Smart Switch 6A','Smart Fan Regulator','Smart Dimmer 250W','Smart Plug 10A'],protocol:'Tuya LAN + Cloud',logo:'🟦',region:'India',color:'#3B82F6',fields:[{l:'Tuya Access ID',t:'text',p:'iot.tuya.com'},{l:'Secret',t:'password',p:''},{l:'Region',t:'text',p:'in'}],tip:"India's leading wiring brand. iHome uses Tuya protocol.",features:['ISI certified','Wide range','Energy monitoring','Scene control']},
-  // SECURITY
   {id:'sec1',name:'Hikvision',cat:'Security',sub:'IP Camera & NVR',models:['DS-2CD2143G2-I 4MP','DS-2CD2347G2-LU ColorVu','DS-7608NXI-I2/S NVR','DS-KC6 Doorbell'],protocol:'ISAPI REST (local HTTP) + Hik-Connect + RTSP',logo:'🟥',region:'Global',color:'#EF4444',fields:[{l:'NVR/Camera IP',t:'text',p:'192.168.x.x'},{l:'Username',t:'text',p:'admin'},{l:'Password',t:'password',p:''}],tip:'ISAPI is local REST API. Enable in Configuration > Integration Protocol.',features:['AI detection','ColorVu night','AcuSense filter','ISAPI local','ANPR plates']},
   {id:'sec2',name:'Dahua',cat:'Security',sub:'IP Camera & NVR',models:['IPC-HDW2849H-S-IL 8MP','IPC-HFW2849S Full-color','NVR4108HS-8P NVR'],protocol:'ONVIF + Dahua HTTP CGI REST + Smart PSS',logo:'🟦',region:'Global',color:'#1D4ED8',fields:[{l:'Camera/NVR IP',t:'text',p:'192.168.x.x'},{l:'Username',t:'text',p:'admin'},{l:'Password',t:'password',p:''}],tip:'Dahua supports ONVIF for universal compatibility. Local REST via HTTP CGI.',features:['Full-color AI','Smart Motion','WizSense AI','ONVIF','Face recognition']},
   {id:'sec3',name:'Aqara',cat:'Security',sub:'Zigbee Smart Home Hub',models:['Aqara Hub M2','Aqara Hub M3','Door/Window Sensor','Motion Sensor P1','Smart Lock U100'],protocol:'Aqara Cloud REST + Zigbee 3.0 + Matter',logo:'⬛',region:'Global',color:'#374151',fields:[{l:'Aqara Email',t:'text',p:'Account'},{l:'Password',t:'password',p:''},{l:'Region',t:'text',p:'cn/eu/us/sg'}],tip:'Hub M3 supports Matter. Good for door/window and motion sensor ecosystems.',features:['Zigbee + Matter','Door sensors','Motion sensors','Smart locks','HomeKit']},
+  {id:'w1',name:'Grohe Sense Guard',cat:'Water',sub:'Leak Detection + Shutoff',models:['Sense Guard 22501LN0','Sense Wi-Fi Sensor','Blue Home Filter'],protocol:'Grohe Ondus Cloud REST',logo:'🟦',region:'Global',color:'#3B82F6',fields:[{l:'Ondus Email',t:'text',p:'Grohe app account'},{l:'Password',t:'password',p:''},{l:'Device ID',t:'text',p:'From Ondus app'}],tip:'Sense Guard installs on main water line. Auto-shutoff on leak detect.',features:['Leak detection','Auto-shutoff','Flow & pressure','Usage analytics','Frost alarm']},
+  {id:'w2',name:'Rachio 3',cat:'Water',sub:'Smart Irrigation Controller',models:['Rachio 3 8-Zone','Rachio 3 16-Zone','Rachio Smart Hose Timer'],protocol:'Rachio Public REST + Webhooks',logo:'🟩',region:'Global',color:'#10B981',fields:[{l:'Rachio API Key',t:'text',p:'app.rach.io/people/me'},{l:'Device ID',t:'text',p:'From app'}],tip:'Weather-aware skip. Get API key from rach.io account page.',features:['Weather-aware','Zone scheduling','Flow meter','Rain skip','Hyperlocal forecast']},
+  {id:'aq1',name:'Airthings Wave Plus',cat:'AirQuality',sub:'7-param Air Monitor',models:['Wave Plus','Wave Mini','View Plus Hub'],protocol:'Airthings Cloud REST + BLE Local',logo:'🟧',region:'Global',color:'#F97316',fields:[{l:'Airthings Client ID',t:'text',p:'dashboard.airthings.com'},{l:'Client Secret',t:'password',p:''},{l:'Device Serial',t:'text',p:'From device label'}],tip:'Measures radon, CO2, VOC, humidity, temp, pressure. BLE local mode available.',features:['Radon','CO2','VOC','Humidity','Pressure','Temperature']},
+  {id:'aq2',name:'Awair Element',cat:'AirQuality',sub:'5-score Air Monitor',models:['Awair Element','Awair Omni','Awair Mint'],protocol:'Awair Local REST + Cloud REST',logo:'🟦',region:'Global',color:'#06B6D4',fields:[{l:'Awair Token',t:'text',p:'developer.getawair.com'},{l:'Device IP',t:'text',p:'192.168.x.x'}],tip:'Local REST enabled by default. Composite Awair Score from 5 sensors.',features:['PM2.5','CO2','VOC','Humidity','Temperature','Awair Score']},
 ];
 
 // ─── SIMULATION ───────────────────────────────────────────────────────────────
@@ -145,6 +164,48 @@ function useSim() {
       {month:'Feb 2025',kwh:1960,amount:571,savings:195},
       {month:'Jan 2025',kwh:2280,amount:698,savings:230},
     ],
+    // WATER
+    waterFlow:4.2, greywater:67, rainwater:45, waterToday:842,
+    irrigZones:[
+      {id:1,name:'Front Garden',on:false,moisture:32,flow:0},
+      {id:2,name:'Back Lawn',on:true,moisture:28,flow:2.1},
+      {id:3,name:'Pool Deck',on:false,moisture:41,flow:0},
+      {id:4,name:'Roof Garden',on:false,moisture:35,flow:0},
+    ],
+    waterLeakAlert:false,
+    waterQuality:{tds:142,ph:7.2,turbidity:0.4},
+    // HVAC ZONES
+    hvacZones:[
+      {id:1,name:'Majlis',temp:23.5,setpoint:22,mode:'cool',fan:'auto',on:true,power:1800,occ:true},
+      {id:2,name:'Master Bed',temp:22.1,setpoint:20,mode:'cool',fan:'low',on:true,power:1400,occ:true},
+      {id:3,name:'Kitchen',temp:26.8,setpoint:24,mode:'cool',fan:'high',on:true,power:1200,occ:true},
+      {id:4,name:'Guest Bed',temp:27.2,setpoint:25,mode:'eco',fan:'auto',on:true,power:700,occ:false},
+      {id:5,name:'Home Office',temp:22.5,setpoint:22,mode:'cool',fan:'med',on:true,power:900,occ:true},
+      {id:6,name:'Garage',temp:35.1,setpoint:28,mode:'fan',fan:'high',on:false,power:0,occ:false},
+    ],
+    thermalComfort:82, hvacCOP:3.4, preCoolingActive:true,
+    // GRID / VPP
+    gridPrice:0.38, gridFreq:50.02, netMeteringBalance:127.40, vppEarningsMonth:234.80, vppActive:true, vppEnrolledKw:8.5,
+    gridExport7d:[12.4,14.1,11.2,15.8,13.7,16.2,17.4],
+    // CARBON / ESG
+    co2AvoidedMonth:2.45, co2AvoidedTotal:18.7, carbonScore:78, esgScore:82, treeEquiv:45,
+    esgE:82, esgS:78, esgG:74, carbonCreditsAED:12.3,
+    carbonMonthly:[1.8,2.1,1.9,2.3,2.0,2.45],
+    // LIFESTYLE
+    airQuality:{aqi:42,label:'Good',pm25:12,co2Ppm:680,voc:45,humidity:48},
+    wellnessScore:86,
+    activeScene:null,
+    // COMMUNITY
+    communityRank:3, communityTotal:48, communitySharedKwh:127, communitySharedLiveKw:8.4,
+    p2pCreditsAED:43.20, p2pKwh:24, p2pBuyers:3,
+    leaderboard:[
+      {rank:1,name:'Villa 17',score:91,saved:312},
+      {rank:2,name:'Villa 03',score:86,saved:284},
+      {rank:3,name:'Your Villa',score:78,saved:234,you:true},
+      {rank:4,name:'Villa 22',score:75,saved:201},
+      {rank:5,name:'Villa 08',score:72,saved:188},
+    ],
+    challengeProgress:78,
   });
   const tick = useRef(0);
   useEffect(()=>{
@@ -155,11 +216,28 @@ function useSim() {
       const sBase = hr<6||hr>19?0:6*Math.sin(Math.PI*(hr-6)/13);
       const solar = Math.max(0,sBase+Math.sin(t*.1)*.3+.1);
       const home = 4.8+Math.sin(t*.07)*.6;
-      const battery = Math.min(100,Math.max(10,d.battery+(solar>home?.05:-.03)));
-      const grid = Math.max(0,home-solar-(battery>20?.5:0));
-      setD(prev=>({...prev,solar,home,battery,grid,batteryTrend:solar>home?'charging':'discharging',
-        hitl:prev.hitl.map(h=>({...h,timeout:Math.max(0,h.timeout-2)}))
-      }));
+      setD(prev=>{
+        const battery = Math.min(100,Math.max(10,prev.battery+(solar>home?.05:-.03)));
+        const grid = Math.max(0,home-solar-(battery>20?.5:0));
+        const waterFlow = Math.max(0,prev.waterFlow+(Math.random()-.5)*.4);
+        const gridPrice = Math.max(0.23,Math.min(0.42,prev.gridPrice+(Math.random()-.5)*.01));
+        const gridFreq = 50+(Math.random()-.5)*.08;
+        const hvacZones = prev.hvacZones.map(z=>{
+          if(!z.on) return z;
+          const diff=z.setpoint-z.temp;
+          const newTemp=z.temp+diff*0.04+(Math.random()-.5)*.05;
+          return {...z,temp:Math.round(newTemp*10)/10};
+        });
+        const irrigZones = prev.irrigZones.map(z=>({
+          ...z,
+          moisture:z.on?Math.min(75,z.moisture+.2):Math.max(15,z.moisture-.05),
+          flow:z.on?Math.max(.5,z.flow+(Math.random()-.5)*.2):0
+        }));
+        return {...prev,solar,home,battery,grid,batteryTrend:solar>home?'charging':'discharging',
+          waterFlow,gridPrice,gridFreq,hvacZones,irrigZones,
+          hitl:prev.hitl.map(h=>({...h,timeout:Math.max(0,h.timeout-2)}))
+        };
+      });
     },2000);
     return ()=>clearInterval(iv);
   },[]);
@@ -174,7 +252,129 @@ function useSim() {
         reason:dec==='approve'?'Owner approved via in-app':'Owner rejected',saving:dec==='approve'?8.40:0},...prev.agentLog]
     }));
   },[]);
-  return {d, toggleDev, resolveHitl};
+  const toggleIrrigZone = useCallback(id=>{
+    setD(prev=>({...prev,irrigZones:prev.irrigZones.map(z=>z.id===id?{...z,on:!z.on,flow:!z.on?2.0:0}:z)}));
+  },[]);
+  const updateHvacZone = useCallback((id,patch)=>{
+    setD(prev=>({...prev,hvacZones:prev.hvacZones.map(z=>z.id===id?{...z,...patch}:z)}));
+  },[]);
+  const setScene = useCallback(scene=>{
+    setD(prev=>({...prev,activeScene:scene}));
+  },[]);
+  return {d, toggleDev, resolveHitl, toggleIrrigZone, updateHvacZone, setScene};
+}
+
+// ─── HOME ASSISTANT WS HOOK ──────────────────────────────────────────────────
+function useHA(haConfig) {
+  const [status,setStatus]=useState('disconnected'); // disconnected | connecting | connected | error
+  const [entities,setEntities]=useState({});
+  const [error,setError]=useState('');
+  const wsRef=useRef(null);
+  const msgIdRef=useRef(1);
+  const handlersRef=useRef({});
+
+  const connect = useCallback(()=>{
+    if(!haConfig||!haConfig.url||!haConfig.token){
+      setError('URL and token required');
+      setStatus('error');
+      return;
+    }
+    try {
+      setStatus('connecting');
+      setError('');
+      const proto=haConfig.url.startsWith('https')?'wss':'ws';
+      const host=haConfig.url.replace(/^https?:\/\//,'').replace(/\/+$/,'');
+      const ws=new WebSocket(`${proto}://${host}/api/websocket`);
+      wsRef.current=ws;
+      ws.onopen=()=>{};
+      ws.onerror=(e)=>{
+        setStatus('error');
+        setError('WebSocket connection failed');
+      };
+      ws.onclose=()=>{
+        if(wsRef.current===ws) setStatus('disconnected');
+      };
+      ws.onmessage=(ev)=>{
+        let msg;
+        try { msg=JSON.parse(ev.data); } catch(_) { return; }
+        if(msg.type==='auth_required'){
+          ws.send(JSON.stringify({type:'auth',access_token:haConfig.token}));
+        } else if(msg.type==='auth_ok'){
+          setStatus('connected');
+          // Fetch initial states
+          const getId=msgIdRef.current++;
+          handlersRef.current[getId]=(res)=>{
+            if(res.success&&Array.isArray(res.result)){
+              const map={};
+              res.result.forEach(e=>{ map[e.entity_id]={state:e.state,attrs:e.attributes||{}}; });
+              setEntities(map);
+            }
+          };
+          ws.send(JSON.stringify({id:getId,type:'get_states'}));
+          // Subscribe to state changes
+          const subId=msgIdRef.current++;
+          ws.send(JSON.stringify({id:subId,type:'subscribe_events',event_type:'state_changed'}));
+        } else if(msg.type==='auth_invalid'){
+          setStatus('error');
+          setError('Invalid token');
+          ws.close();
+        } else if(msg.type==='result'&&handlersRef.current[msg.id]){
+          handlersRef.current[msg.id](msg);
+          delete handlersRef.current[msg.id];
+        } else if(msg.type==='event'&&msg.event&&msg.event.event_type==='state_changed'){
+          const ns=msg.event.data.new_state;
+          if(ns){
+            setEntities(prev=>({...prev,[ns.entity_id]:{state:ns.state,attrs:ns.attributes||{}}}));
+          }
+        }
+      };
+    } catch(e) {
+      setStatus('error');
+      setError(String(e&&e.message||e));
+    }
+  },[haConfig]);
+
+  const disconnect = useCallback(()=>{
+    if(wsRef.current){
+      try { wsRef.current.close(); } catch(_) {}
+      wsRef.current=null;
+    }
+    setStatus('disconnected');
+    setEntities({});
+  },[]);
+
+  // Map entities to app data
+  const haData = useMemo(()=>{
+    if(status!=='connected') return null;
+    const map=haConfig&&haConfig.map||DEFAULT_HA_MAP;
+    const num=(k)=>{
+      const e=entities[map[k]];
+      if(!e) return null;
+      const n=parseFloat(e.state);
+      return isNaN(n)?null:n;
+    };
+    return {
+      solar:num('solar'),
+      battery:num('battery'),
+      grid:num('grid'),
+      home:num('home'),
+      generator:num('generator'),
+      temp:num('temp'),
+      humidity:num('humidity'),
+      waterFlow:num('waterFlow'),
+      greywater:num('greywater'),
+      rainwater:num('rainwater'),
+      gridPrice:num('gridPrice'),
+      gridFreq:num('gridFreq'),
+      aqi:num('aqi'),
+      pm25:num('pm25'),
+      co2:num('co2'),
+    };
+  },[status,entities,haConfig]);
+
+  useEffect(()=>()=>{ if(wsRef.current) try{wsRef.current.close()}catch(_){} },[]);
+
+  return {status,error,entities,haData,connect,disconnect};
 }
 
 // ─── POWER FLOW CANVAS ────────────────────────────────────────────────────────
@@ -264,6 +464,37 @@ function Card({children,style={}}){return React.createElement('div',{style:{...s
 function Card2({children,style={}}){return React.createElement('div',{style:{...s.card2,...style}},children)}
 function Sep(){return React.createElement('div',{style:{height:1,background:T.b1,margin:'10px 0'}})}
 
+// Ring gauge
+function Ring({pct, color, size=64, thick=6, val, unit='', label}) {
+  const r=(size-thick)/2, circ=2*Math.PI*r, dash=(pct/100)*circ;
+  return React.createElement('div',{style:{position:'relative',width:size,height:size,flexShrink:0}},
+    React.createElement('svg',{viewBox:`0 0 ${size} ${size}`,style:{transform:'rotate(-90deg)',display:'block'}},
+      React.createElement('circle',{cx:size/2,cy:size/2,r,fill:'none',stroke:color+'22',strokeWidth:thick}),
+      React.createElement('circle',{cx:size/2,cy:size/2,r,fill:'none',stroke:color,strokeWidth:thick,strokeDasharray:`${dash} ${circ-dash}`,strokeLinecap:'round'})
+    ),
+    React.createElement('div',{style:{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:0}},
+      React.createElement('div',{style:{fontFamily:T.mono,fontSize:size>70?16:12,fontWeight:700,color,lineHeight:1}},`${val}${unit}`),
+      label&&React.createElement('div',{style:{fontSize:8,color:T.t2,marginTop:2,textAlign:'center'}},label)
+    )
+  );
+}
+
+// Mini progress bar
+function Bar({pct, color, h=4}) {
+  return React.createElement('div',{style:{flex:1,height:h,background:T.s3,borderRadius:h,overflow:'hidden'}},
+    React.createElement('div',{style:{height:'100%',width:`${Math.min(100,pct)}%`,background:color,borderRadius:h,transition:'width .5s'}})
+  );
+}
+
+// HA Status Indicator
+function HAStatusDot({status}){
+  const colors={connected:T.green,connecting:T.amber,error:T.red,disconnected:T.t3};
+  return React.createElement('div',{title:`HA: ${status}`,style:{display:'flex',alignItems:'center',gap:4,padding:'3px 8px',background:T.s2,border:`1px solid ${T.b1}`,borderRadius:20,fontSize:9,color:colors[status]||T.t3,fontWeight:600,letterSpacing:.3}},
+    React.createElement('span',{style:{width:6,height:6,borderRadius:'50%',background:colors[status]||T.t3,animation:status==='connecting'?'pulse 1s infinite':'none'}}),
+    React.createElement('span',null,'HA'),
+  );
+}
+
 // ─── LOGIN PAGE ───────────────────────────────────────────────────────────────
 function LoginPage({onLogin}) {
   const [tab,setTab]=useState('login');
@@ -289,34 +520,26 @@ function LoginPage({onLogin}) {
     setTimeout(()=>{ setLoading(false); onLogin({name:'Hossain',email:'hossain@opliv.io',country:'UAE',demo:true}); },800);
   };
 
-  return React.createElement('div',{style:{height:'100%',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:20,background:T.bg,position:'relative',overflow:'hidden'}},
-    // Background glow
+  return React.createElement('div',{style:{height:'100%',overflowY:'auto',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:20,background:T.bg,position:'relative'}},
     React.createElement('div',{style:{position:'absolute',top:'10%',left:'50%',transform:'translateX(-50%)',width:400,height:400,background:'radial-gradient(circle,#00D4A80A 0%,transparent 70%)',pointerEvents:'none'}}),
     React.createElement('div',{style:{position:'absolute',bottom:'5%',right:'10%',width:200,height:200,background:'radial-gradient(circle,#6366F108 0%,transparent 70%)',pointerEvents:'none'}}),
-
-    // Logo + headline
-    React.createElement('div',{style:{textAlign:'center',marginBottom:32,animation:'fadeUp 0.5s ease'},className:'fade-up'},
+    React.createElement('div',{style:{textAlign:'center',marginBottom:28,animation:'fadeUp 0.5s ease'},className:'fade-up'},
       React.createElement('div',{style:{fontSize:42,fontWeight:700,color:T.cyan,letterSpacing:-2,marginBottom:4}},'OpLiv'),
-      React.createElement('div',{style:{fontSize:13,color:T.t2,letterSpacing:1}},
-        'HOME ENERGY MANAGEMENT'
-      ),
-      React.createElement('div',{style:{display:'flex',gap:12,justifyContent:'center',marginTop:14,flexWrap:'wrap'}},
-        ['☀️ Solar','🔋 Battery','⚡ Grid','🚗 EV','🤖 AI Agents'].map(f=>
-          React.createElement('span',{key:f,style:{fontSize:11,color:T.t3,background:T.s2,padding:'3px 8px',borderRadius:20,border:`1px solid ${T.b1}`}},f)
+      React.createElement('div',{style:{fontSize:13,color:T.t1,letterSpacing:.5,fontWeight:500}},'Intelligent Living Platform'),
+      React.createElement('div',{style:{fontSize:11,color:T.t2,letterSpacing:1.5,marginTop:6}},'ENERGY · WATER · COMFORT · INTELLIGENCE'),
+      React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:14,fontStyle:'italic',maxWidth:340,lineHeight:1.5,padding:'0 10px'}},'"Turn any building into a self-optimizing, net-zero intelligent ecosystem."'),
+      React.createElement('div',{style:{display:'flex',gap:6,justifyContent:'center',marginTop:14,flexWrap:'wrap'}},
+        ['☀️ Solar','🔋 Battery','💧 Water','❄️ HVAC','⚡ VPP','🌱 Carbon','🤖 Agents'].map(f=>
+          React.createElement('span',{key:f,style:{fontSize:10,color:T.t3,background:T.s2,padding:'3px 8px',borderRadius:20,border:`1px solid ${T.b1}`}},f)
         )
       )
     ),
-
-    // Card
     React.createElement('div',{style:{width:'100%',maxWidth:380,animation:'fadeUp 0.5s 0.1s ease both'},className:'fade-up'},
-      // Tab switcher
       React.createElement('div',{style:{display:'flex',background:T.s2,borderRadius:10,padding:4,marginBottom:20,border:`1px solid ${T.b1}`}},
         ['login','register'].map(t=>
           React.createElement('button',{key:t,onClick:()=>{setTab(t);setErr('')},style:{flex:1,padding:'8px',borderRadius:7,border:'none',cursor:'pointer',fontSize:13,fontWeight:500,fontFamily:T.font,background:tab===t?T.s1:'transparent',color:tab===t?T.t1:T.t2,transition:'all .2s'}},t==='login'?'Sign In':'Create Account')
         )
       ),
-
-      // Fields
       React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:10}},
         tab==='register'&&React.createElement('div',null,
           React.createElement('div',{style:{fontSize:11,color:T.t2,marginBottom:5}},'Full Name'),
@@ -344,15 +567,13 @@ function LoginPage({onLogin}) {
         ),
         React.createElement('div',{style:{textAlign:'center',fontSize:12,color:T.t3,margin:'8px 0'}},'— or —'),
         React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:handleDemo,disabled:loading,style:{width:'100%',padding:'12px',borderRadius:10,border:`1px solid ${T.b2}`,fontSize:13}},
-          '🎯 Try Demo — Hossain\'s Villa, Dubai'
+          "🎯 Try Demo — Hossain's Villa, Dubai"
         ),
       ),
-
-      // Footer
       React.createElement('div',{style:{textAlign:'center',marginTop:20}},
         React.createElement('div',{style:{fontSize:11,color:T.t3}},
-          tab==='login'?React.createElement('span',null,"Don't have an account? ",React.createElement('span',{style:{color:T.cyan,cursor:'pointer'},onClick:()=>{setTab('register');setErr('')}},"Create one"))
-          :React.createElement('span',null,"Already have an account? ",React.createElement('span',{style:{color:T.cyan,cursor:'pointer'},onClick:()=>{setTab('login');setErr('')}},"Sign in"))
+          tab==='login'?React.createElement('span',null,"Don't have an account? ",React.createElement('span',{style:{color:T.cyan,cursor:'pointer'},onClick:()=>{setTab('register');setErr('')}},'Create one'))
+          :React.createElement('span',null,'Already have an account? ',React.createElement('span',{style:{color:T.cyan,cursor:'pointer'},onClick:()=>{setTab('login');setErr('')}},'Sign in'))
         ),
         React.createElement('div',{style:{fontSize:10,color:T.t3,marginTop:8}},'7-day Elite trial • No credit card required • UAE & India tariffs included')
       )
@@ -362,7 +583,7 @@ function LoginPage({onLogin}) {
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function App() {
-  const {d,toggleDev,resolveHitl}=useSim();
+  const {d:simData,toggleDev,resolveHitl,toggleIrrigZone,updateHvacZone,setScene}=useSim();
   const [user,setUser]=useState(null);
   const [page,setPage]=useState('dashboard');
   const [sidebar,setSidebar]=useState(false);
@@ -378,30 +599,57 @@ function App() {
   const [libSel,setLibSel]=useState(null);
   const [libSearch,setLibSearch]=useState('');
   const [libCat,setLibCat]=useState('All');
+  const [expandedHvac,setExpandedHvac]=useState(null);
+  // HA config state
+  const [haConfig,setHaConfig]=useState({url:'',token:'',map:{...DEFAULT_HA_MAP}});
+  const ha=useHA(haConfig);
+
+  // Merge HA data over sim data (use HA values when available)
+  const d = useMemo(()=>{
+    if(ha.status!=='connected'||!ha.haData) return simData;
+    const merged={...simData};
+    Object.entries(ha.haData).forEach(([k,v])=>{ if(v!=null&&!isNaN(v)) merged[k]=v; });
+    return merged;
+  },[simData,ha.status,ha.haData]);
 
   if(!user) return React.createElement(LoginPage,{onLogin:u=>setUser(u)});
 
   const nav=[
     {id:'dashboard',icon:'⌂',label:'Home'},
     {id:'controller',icon:'◈',label:'Control'},
+    {id:'water',icon:'💧',label:'Water'},
+    {id:'hvac',icon:'❄',label:'HVAC'},
+    {id:'vpp',icon:'⋈',label:'VPP'},
     {id:'circuit',icon:'⚡',label:'Circuit'},
     {id:'layout',icon:'⊞',label:'Villa'},
     {id:'optimizer',icon:'◉',label:'Optimize'},
     {id:'forecast',icon:'☀',label:'Forecast'},
     {id:'scheduler',icon:'◷',label:'Schedule'},
-    {id:'grid',icon:'⋈',label:'Grid Flex'},
     {id:'billing',icon:'◎',label:'Bills'},
     {id:'library',icon:'⊙',label:'Devices'},
+    {id:'carbon',icon:'🌱',label:'Carbon'},
+    {id:'lifestyle',icon:'✨',label:'Lifestyle'},
+    {id:'community',icon:'🏘',label:'Community'},
     {id:'agents',icon:'◆',label:'Agents'},
     {id:'alerts',icon:'◬',label:'Alerts'},
     {id:'profile',icon:'○',label:'Profile'},
   ];
 
-  const go=(p)=>{ setPage(p); setSidebar(false); };
-  const catColors={Solar:'#F59E0B',Battery:'#10B981',EV:'#3B82F6',Generator:'#EF4444',HVAC:'#6366F1',Meter:'#8B5CF6',Appliance:'#F97316',Lighting:'#FBBF24',Switch:'#06B6D4',Security:'#EF4444'};
-  const libCats=['All','Solar','Battery','EV','Generator','HVAC','Meter','Appliance','Lighting','Switch','Security'];
+  const bottomNav=[
+    {id:'dashboard',icon:'⌂',label:'Home'},
+    {id:'controller',icon:'◈',label:'Control'},
+    {id:'water',icon:'💧',label:'Water'},
+    {id:'hvac',icon:'❄',label:'HVAC'},
+    {id:'vpp',icon:'⋈',label:'VPP'},
+    {id:'carbon',icon:'🌱',label:'Carbon'},
+    {id:'lifestyle',icon:'✨',label:'Life'},
+    {id:'agents',icon:'◆',label:'Agents'},
+  ];
 
-  // Connection wizard
+  const go=(p)=>{ setPage(p); setSidebar(false); };
+  const catColors={Solar:'#F59E0B',Battery:'#10B981',EV:'#3B82F6',Generator:'#EF4444',HVAC:'#6366F1',Meter:'#8B5CF6',Appliance:'#F97316',Lighting:'#FBBF24',Switch:'#06B6D4',Security:'#EF4444',Water:'#06B6D4',AirQuality:'#84CC16'};
+  const libCats=['All','Solar','Battery','EV','Generator','HVAC','Meter','Appliance','Lighting','Switch','Security','Water','AirQuality'];
+
   const startConn=(m)=>{ setConnDev(m);setConnStep(0);setConnVals({});setConnMod(0);setLibSel(null); };
   const doConn=()=>{
     if(connStep<connDev.fields.length-1){setConnStep(s=>s+1);return;}
@@ -416,7 +664,6 @@ function App() {
 
   // ── DASHBOARD ──────────────────────────────────────────────────────────────
   const PageDashboard=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
-    // HITL card
     d.hitl.map(h=>React.createElement(Card,{key:h.id,style:{border:'1px solid #6366F133',background:'linear-gradient(135deg,#0E1420,#141B2D)'}},
       React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10}},
         React.createElement('span',{style:{fontSize:16,color:T.purple}},'◆'),
@@ -437,13 +684,12 @@ function App() {
       ),
       React.createElement('div',{style:{fontSize:10,color:T.t3,textAlign:'center',marginTop:6}},`Auto-fallback in ${Math.floor(h.timeout/60)}:${String(h.timeout%60).padStart(2,'0')} min`)
     )),
-    // Greeting
     React.createElement(Card,null,
       React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
         React.createElement('div',null,
           React.createElement('div',{style:{fontSize:10,color:T.t2,letterSpacing:.5}},'GOOD AFTERNOON'),
           React.createElement('div',{style:{fontSize:18,fontWeight:700,marginTop:2}},`${user.name}'s Villa ☀️`),
-          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:3}},`Dubai · ${d.temp}°C · Sunny · ${d.humidity}% humidity`)
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:3}},`Dubai · ${Math.round(d.temp)}°C · Sunny · ${Math.round(d.humidity)}% humidity`)
         ),
         React.createElement('div',{style:{textAlign:'right'}},
           React.createElement('div',{style:{fontSize:10,color:T.cyan,letterSpacing:.5}},"TODAY'S SAVINGS"),
@@ -451,7 +697,6 @@ function App() {
         )
       )
     ),
-    // Quick actions
     React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}},
       [{icon:'🌙',label:'Good Night',color:'#6366F1'},{icon:'👥',label:'Guest Mode',color:'#10B981'},
        {icon:'✈️',label:'Vacation',color:'#F59E0B'},{icon:'🎉',label:'Party Mode',color:'#EC4899'},
@@ -462,7 +707,6 @@ function App() {
         React.createElement('div',{style:{fontSize:10,color:a.color==='#EF4444'?T.red:T.t2,fontWeight:500}},a.label)
       ))
     ),
-    // Power Flow
     React.createElement(Card,{style:{padding:0,overflow:'hidden'}},
       React.createElement('div',{style:{padding:'12px 16px 8px',borderBottom:`1px solid ${T.b1}`,display:'flex',justifyContent:'space-between',alignItems:'center'}},
         React.createElement('span',{style:{fontSize:12,fontWeight:600}},'Live Power Flow'),
@@ -470,7 +714,6 @@ function App() {
       ),
       React.createElement('div',{style:{height:200}},React.createElement(PowerFlow,{solar:d.solar,battery:d.battery,grid:d.grid,home:d.home,batteryTrend:d.batteryTrend}))
     ),
-    // KPI grid
     React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
       [{label:'SOLAR',val:`${d.solar.toFixed(2)}kW`,sub:`${d.solarToday} kWh today`,color:T.amber},
        {label:'BATTERY',val:`${Math.round(d.battery)}%`,sub:d.batteryTrend==='charging'?'↑ Charging':'↓ Discharging',color:T.green},
@@ -482,7 +725,18 @@ function App() {
         React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},k.sub)
       ))
     ),
-    // AI tip
+    React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+      React.createElement(Card,{style:{cursor:'pointer'},onClick:()=>go('water')},
+        React.createElement('div',{style:s.label},'WATER TODAY'),
+        React.createElement('div',{style:{fontFamily:T.mono,fontSize:20,fontWeight:700,color:T.teal,marginTop:4}},`${d.waterToday} L`),
+        React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},`${d.greywater}% greywater · ${d.rainwater}% rain`)
+      ),
+      React.createElement(Card,{style:{cursor:'pointer'},onClick:()=>go('carbon')},
+        React.createElement('div',{style:s.label},'CO₂ AVOIDED'),
+        React.createElement('div',{style:{fontFamily:T.mono,fontSize:20,fontWeight:700,color:T.lime,marginTop:4}},`${d.co2AvoidedMonth}t`),
+        React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},`= ${d.treeEquiv} trees this month`)
+      )
+    ),
     React.createElement(Card2,{style:{border:'1px solid #00D4A822',display:'flex',gap:10}},
       React.createElement('span',{style:{fontSize:16,color:T.cyan}},'◆'),
       React.createElement('div',null,
@@ -805,55 +1059,6 @@ function App() {
     ))
   );
 
-  // ── GRID ──────────────────────────────────────────────────────────────────
-  const PageGrid=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
-    React.createElement(Card,{style:{background:'#6366F108',border:'1px solid #6366F122'}},
-      React.createElement('div',{style:{fontSize:10,color:T.purple,fontWeight:600,letterSpacing:.5}},'ENROLLED · DEWA DEMAND RESPONSE'),
-      React.createElement('div',{style:{fontSize:14,fontWeight:600,marginTop:4}},'OpenADR 2.0b · Full Autonomy'),
-      React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'Auto-participate if saving ≥ AED 5.00 per event')
-    ),
-    React.createElement(Card,null,
-      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Active Grid Events'),
-      [{type:'Price Alert',time:'14:00–16:00',price:'38 fils/kWh',saving:'AED 8.40',status:'pending'},
-       {type:'Voluntary DR',time:'18:00–20:00',price:'Peak',saving:'AED 4.20',status:'active'}
-      ].map((e,i)=>React.createElement(Card2,{key:i,style:{marginBottom:8,border:'1px solid #6366F122'}},
-        React.createElement('div',{style:{display:'flex',justifyContent:'space-between'}},
-          React.createElement('span',{style:s.tag(T.purple)},e.type),
-          React.createElement('span',{style:s.tag(T.green)},`+${e.saving}`)
-        ),
-        React.createElement('div',{style:{fontSize:12,marginTop:6}},`${e.time} · ${e.price}`),
-        React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},e.status==='active'?'✓ Auto-participating (EOA)':'⏳ Awaiting approval')
-      ))
-    ),
-    React.createElement(Card,null,
-      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Participation History'),
-      [{date:'03 May',type:'Voluntary DR',dur:'2h',saved:7.80,kwh:4.2},
-       {date:'01 May',type:'Price Alert',dur:'3h',saved:11.20,kwh:6.1},
-       {date:'28 Apr',type:'Emergency',dur:'1h',saved:4.10,kwh:2.3}
-      ].map((h,i)=>React.createElement('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderTop:i>0?`1px solid ${T.b1}`:'none'}},
-        React.createElement('div',null,
-          React.createElement('div',{style:{fontSize:12}},`${h.date} · ${h.type}`),
-          React.createElement('div',{style:{fontSize:11,color:T.t2}},`${h.dur} · ${h.kwh} kWh shed`)
-        ),
-        React.createElement('span',{style:{color:T.green,fontFamily:T.mono,fontSize:13}},`+AED ${h.saved.toFixed(2)}`)
-      ))
-    ),
-    React.createElement(Card,null,
-      React.createElement('div',{style:{display:'flex',justifyContent:'space-between'}},
-        React.createElement('div',null,
-          React.createElement('div',{style:s.label},'TOTAL EARNINGS'),
-          React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.green,marginTop:4}},'AED 127.40'),
-          React.createElement('div',{style:{fontSize:11,color:T.t2}},'This year · 18 events')
-        ),
-        React.createElement('div',{style:{textAlign:'right'}},
-          React.createElement('div',{style:s.label},'RANKING'),
-          React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.purple,marginTop:4}},'Top 12%'),
-          React.createElement('div',{style:{fontSize:11,color:T.t2}},'In your area')
-        )
-      )
-    )
-  );
-
   // ── BILLING ───────────────────────────────────────────────────────────────
   const PageBilling=()=>{
     const maxB=Math.max(...d.bills.map(b=>b.amount));
@@ -909,6 +1114,582 @@ function App() {
       )
     );
   };
+
+  // ── WATER ─────────────────────────────────────────────────────────────────
+  const PageWater=()=>{
+    const totalFlow=d.irrigZones.reduce((a,b)=>a+(b.flow||0),0)+d.waterFlow;
+    const mainsShare=Math.max(0,d.waterFlow-2);
+    const greySh=Math.min(d.waterFlow,2);
+    const rainSh=Math.max(0,d.waterFlow-mainsShare-greySh);
+    return React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+      React.createElement(Card,{style:{background:'linear-gradient(135deg,#06B6D40A,#0E1420)',border:'1px solid #06B6D422'}},
+        React.createElement('div',{style:{fontSize:10,color:T.teal,fontWeight:600,letterSpacing:.5}},'ECO FLOW · WATER MANAGEMENT'),
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginTop:6}},
+          React.createElement('div',null,
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:24,fontWeight:700,color:T.teal}},`${d.waterToday} L`),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},`today · baseline 1220 L`)
+          ),
+          React.createElement('div',{style:{textAlign:'right'}},
+            React.createElement('div',{style:{fontSize:11,color:T.t2}},'Saved'),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:18,fontWeight:700,color:T.green}},`${1220-d.waterToday} L`),
+            React.createElement('div',{style:{fontSize:10,color:T.t3}},`${Math.round((1-d.waterToday/1220)*100)}% vs baseline`)
+          )
+        )
+      ),
+      React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+        React.createElement(Card,null,
+          React.createElement('div',{style:s.label},'GREYWATER'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:20,fontWeight:700,color:T.teal,marginTop:4}},`${d.greywater}%`),
+          React.createElement('div',{style:{marginTop:6}},React.createElement(Bar,{pct:d.greywater,color:T.teal,h:5})),
+          React.createElement('div',{style:{fontSize:10,color:T.t2,marginTop:4}},'Recycled today')
+        ),
+        React.createElement(Card,null,
+          React.createElement('div',{style:s.label},'RAINWATER'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:20,fontWeight:700,color:T.blue,marginTop:4}},`${d.rainwater}%`),
+          React.createElement('div',{style:{marginTop:6}},React.createElement(Bar,{pct:d.rainwater,color:T.blue,h:5})),
+          React.createElement('div',{style:{fontSize:10,color:T.t2,marginTop:4}},'Tank level')
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:10}},
+          React.createElement('span',{style:{fontSize:12,fontWeight:600}},'Live Flow Sources'),
+          React.createElement('span',{style:{fontFamily:T.mono,fontSize:12,color:T.teal}},`${d.waterFlow.toFixed(1)} L/min`)
+        ),
+        React.createElement('div',{style:{display:'flex',height:24,borderRadius:12,overflow:'hidden',background:T.s3}},
+          React.createElement('div',{style:{width:`${(mainsShare/Math.max(.1,d.waterFlow))*100}%`,background:T.blue,display:'flex',alignItems:'center',justifyContent:'center'}},
+            mainsShare>0.4&&React.createElement('span',{style:{fontSize:9,color:'#fff',fontWeight:600}},'Mains')
+          ),
+          React.createElement('div',{style:{width:`${(greySh/Math.max(.1,d.waterFlow))*100}%`,background:T.teal,display:'flex',alignItems:'center',justifyContent:'center'}},
+            greySh>0.4&&React.createElement('span',{style:{fontSize:9,color:'#000',fontWeight:600}},'Grey')
+          ),
+          React.createElement('div',{style:{width:`${(rainSh/Math.max(.1,d.waterFlow))*100}%`,background:T.lime,display:'flex',alignItems:'center',justifyContent:'center'}},
+            rainSh>0.2&&React.createElement('span',{style:{fontSize:9,color:'#000',fontWeight:600}},'Rain')
+          )
+        ),
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginTop:6,fontSize:10,color:T.t2}},
+          React.createElement('span',null,`Mains ${mainsShare.toFixed(1)} L/m`),
+          React.createElement('span',null,`Grey ${greySh.toFixed(1)} L/m`),
+          React.createElement('span',null,`Rain ${rainSh.toFixed(1)} L/m`)
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Greywater Tank Loop'),
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',gap:10}},
+          React.createElement('div',{style:{textAlign:'center'}},
+            React.createElement('div',{style:{fontSize:20,marginBottom:4}},'🚿'),
+            React.createElement('div',{style:{fontSize:10,color:T.t2}},'Input'),
+            React.createElement('div',{style:{fontSize:11,color:T.teal,marginTop:2}},'Shower · Laundry')
+          ),
+          React.createElement('div',{style:{textAlign:'center'}},
+            React.createElement(Ring,{pct:d.greywater,color:T.teal,size:80,thick:8,val:d.greywater,unit:'%',label:'TANK'})
+          ),
+          React.createElement('div',{style:{textAlign:'center'}},
+            React.createElement('div',{style:{fontSize:20,marginBottom:4}},'🌿'),
+            React.createElement('div',{style:{fontSize:10,color:T.t2}},'Output'),
+            React.createElement('div',{style:{fontSize:11,color:T.lime,marginTop:2}},'Irrigation · Toilet')
+          )
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Irrigation Zones'),
+        d.irrigZones.map((z,i)=>React.createElement('div',{key:z.id,style:{padding:'10px 0',borderTop:i>0?`1px solid ${T.b1}`:'none'}},
+          React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
+            React.createElement('div',null,
+              React.createElement('div',{style:{fontSize:13,fontWeight:500}},z.name),
+              React.createElement('div',{style:{fontSize:10,color:T.t2,marginTop:1}},`Moisture ${Math.round(z.moisture)}% · ${z.flow.toFixed(1)} L/min`)
+            ),
+            React.createElement(Toggle,{on:z.on,onClick:()=>toggleIrrigZone(z.id)})
+          ),
+          React.createElement('div',{style:{display:'flex',gap:6,alignItems:'center'}},
+            React.createElement(Bar,{pct:z.moisture,color:z.moisture<30?T.amber:z.moisture<50?T.lime:T.green,h:4}),
+            React.createElement('span',{style:{fontSize:10,fontFamily:T.mono,color:T.t3,width:32}},`${Math.round(z.moisture)}%`)
+          )
+        ))
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Water Quality'),
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}},
+          [{l:'TDS',v:d.waterQuality.tds,u:'ppm',ok:d.waterQuality.tds<300,color:T.teal},
+           {l:'pH',v:d.waterQuality.ph.toFixed(1),u:'',ok:d.waterQuality.ph>=6.5&&d.waterQuality.ph<=8.5,color:T.lime},
+           {l:'TURBIDITY',v:d.waterQuality.turbidity.toFixed(1),u:'NTU',ok:d.waterQuality.turbidity<1,color:T.blue},
+          ].map(m=>React.createElement('div',{key:m.l,style:{textAlign:'center',background:T.s3,borderRadius:8,padding:'10px 6px'}},
+            React.createElement('div',{style:{fontSize:9,color:T.t2,letterSpacing:.5,fontWeight:600}},m.l),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:16,fontWeight:700,color:m.color,marginTop:4}},m.v),
+            React.createElement('div',{style:{fontSize:9,color:T.t3}},m.u),
+            React.createElement('div',{style:{...s.tag(m.ok?T.green:T.amber),fontSize:8,marginTop:4}},m.ok?'OK':'WATCH')
+          ))
+        )
+      ),
+      React.createElement(Card,{style:{background:d.waterLeakAlert?'#EF444411':'#10B98111',border:`1px solid ${d.waterLeakAlert?'#EF444433':'#10B98133'}`,display:'flex',alignItems:'center',gap:12}},
+        React.createElement('span',{style:{fontSize:22}},d.waterLeakAlert?'🚨':'✓'),
+        React.createElement('div',{style:{flex:1}},
+          React.createElement('div',{style:{fontSize:12,fontWeight:600,color:d.waterLeakAlert?T.red:T.green}},d.waterLeakAlert?'LEAK DETECTED':'No Leaks Detected'),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},d.waterLeakAlert?'Auto-shutoff triggered on main line':'Grohe Sense Guard monitoring · All clear')
+        ),
+        React.createElement(Btn,{bg:T.s3,color:T.t2,onClick:()=>{},style:{fontSize:11,border:`1px solid ${T.b2}`,borderRadius:8}},'Details')
+      )
+    );
+  };
+
+  // ── HVAC ──────────────────────────────────────────────────────────────────
+  const PageHVAC=()=>{
+    const totalPower=d.hvacZones.reduce((a,b)=>a+(b.on?b.power:0),0);
+    const modeColors={cool:T.blue,heat:T.red,fan:T.teal,eco:T.green,auto:T.purple};
+    return React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+      React.createElement(Card,{style:{background:'linear-gradient(135deg,#6366F10A,#0E1420)',border:'1px solid #6366F122'}},
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
+          React.createElement('div',null,
+            React.createElement('span',{style:{...s.tag(T.purple),display:'inline-block',marginBottom:6}},'◉ AI HVAC OPTIMIZATION'),
+            React.createElement('div',{style:{fontSize:14,fontWeight:600}},d.preCoolingActive?'Pre-cooling Active':'Standby'),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},`COP ${d.hvacCOP} · ${(totalPower/1000).toFixed(1)} kW · DR Ready`)
+          ),
+          React.createElement('div',{style:{textAlign:'right'}},
+            React.createElement('div',{style:{fontSize:10,color:T.t2}},'Monthly savings'),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:20,fontWeight:700,color:T.green}},'22%'),
+            React.createElement('div',{style:{fontSize:10,color:T.t3}},'vs baseline')
+          )
+        )
+      ),
+      React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+        d.hvacZones.map(z=>{
+          const isOpen=expandedHvac===z.id;
+          return React.createElement(Card,{key:z.id,style:{cursor:'pointer',border:`1px solid ${z.on?'#6366F133':T.b1}`,padding:12,gridColumn:isOpen?'1 / -1':'auto'},onClick:()=>setExpandedHvac(isOpen?null:z.id)},
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}},
+              React.createElement('div',{style:{minWidth:0,flex:1}},
+                React.createElement('div',{style:{fontSize:13,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},z.name),
+                React.createElement('div',{style:{fontSize:10,color:T.t2,marginTop:1}},`Set ${z.setpoint}°C · ${z.power}W`)
+              ),
+              React.createElement('div',{style:{width:8,height:8,borderRadius:'50%',background:z.occ?T.green:T.t3,flexShrink:0,marginTop:4}})
+            ),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:modeColors[z.mode]||T.cyan}},`${z.temp.toFixed(1)}°`),
+            React.createElement('div',{style:{display:'flex',gap:4,marginTop:6,flexWrap:'wrap'}},
+              React.createElement('span',{style:{...s.tag(modeColors[z.mode]||T.cyan),fontSize:9}},z.mode.toUpperCase()),
+              z.on&&React.createElement('span',{style:{...s.tag(T.green),fontSize:9}},'ON'),
+              !z.on&&React.createElement('span',{style:{...s.tag(T.t3),fontSize:9}},'OFF')
+            ),
+            isOpen&&React.createElement('div',{style:{marginTop:12,paddingTop:12,borderTop:`1px solid ${T.b1}`},onClick:e=>e.stopPropagation()},
+              React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
+                React.createElement('span',{style:{fontSize:11,color:T.t2}},`Setpoint: ${z.setpoint}°C`),
+                React.createElement(Toggle,{on:z.on,onClick:()=>updateHvacZone(z.id,{on:!z.on})})
+              ),
+              React.createElement('input',{type:'range',min:16,max:30,value:z.setpoint,onChange:e=>updateHvacZone(z.id,{setpoint:parseInt(e.target.value)}),style:{width:'100%',height:4,borderRadius:2,background:T.s3,outline:'none',WebkitAppearance:'none',marginBottom:10}}),
+              React.createElement('div',{style:{fontSize:10,color:T.t2,marginBottom:4}},'Mode'),
+              React.createElement('div',{style:{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}},
+                ['cool','heat','fan','eco','auto'].map(m=>React.createElement('button',{key:m,onClick:()=>updateHvacZone(z.id,{mode:m}),style:{flex:1,minWidth:50,fontSize:11,padding:'5px 6px',borderRadius:6,border:`1px solid ${z.mode===m?modeColors[m]:T.b2}`,background:z.mode===m?modeColors[m]+'22':'transparent',color:z.mode===m?modeColors[m]:T.t2,cursor:'pointer',fontFamily:T.font,fontWeight:500}},m)),
+              ),
+              React.createElement('div',{style:{fontSize:10,color:T.t2,marginBottom:4}},'Fan'),
+              React.createElement('div',{style:{display:'flex',gap:5}},
+                ['auto','low','med','high'].map(f=>React.createElement('button',{key:f,onClick:()=>updateHvacZone(z.id,{fan:f}),style:{flex:1,fontSize:11,padding:'5px 6px',borderRadius:6,border:`1px solid ${z.fan===f?T.cyan:T.b2}`,background:z.fan===f?T.cyan+'22':'transparent',color:z.fan===f?T.cyan:T.t2,cursor:'pointer',fontFamily:T.font,fontWeight:500}},f))
+              )
+            )
+          );
+        })
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Thermal Comfort'),
+        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:14}},
+          React.createElement(Ring,{pct:d.thermalComfort,color:T.green,size:88,thick:9,val:d.thermalComfort,unit:'%',label:'COMFORT'}),
+          React.createElement('div',{style:{flex:1}},
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginBottom:4}},'PMV/PPD Model'),
+            React.createElement('div',{style:{fontSize:12,marginBottom:4}},'PMV: +0.3 (Slightly warm)'),
+            React.createElement('div',{style:{fontSize:12,marginBottom:4}},'PPD: 8% dissatisfied'),
+            React.createElement('div',{style:{fontSize:11,color:T.green}},'Within ASHRAE 55 comfort zone')
+          )
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Predictive Cooling Schedule'),
+        React.createElement('div',{style:{fontSize:11,color:T.t2,marginBottom:8}},'Pre-cool 1h before peak (14:00 DEWA price peak)'),
+        React.createElement('div',{style:{position:'relative',height:36,background:T.s3,borderRadius:6,overflow:'hidden'}},
+          React.createElement('div',{style:{position:'absolute',left:'54%',width:'8%',height:'100%',background:T.purple+'66'}}),
+          React.createElement('div',{style:{position:'absolute',left:'58%',width:'12%',height:'100%',background:T.red+'55'}}),
+          React.createElement('div',{style:{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:T.t1,fontWeight:600}},'13:00 Pre-cool → 14:00 Peak → 16:00 Resume')
+        )
+      ),
+      React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+        React.createElement(Card,null,
+          React.createElement('div',{style:s.label},'COP'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.green,marginTop:4}},d.hvacCOP),
+          React.createElement('div',{style:{fontSize:10,color:T.t2,marginTop:2}},'Coefficient of Performance')
+        ),
+        React.createElement(Card,null,
+          React.createElement('div',{style:s.label},'TOTAL DRAW'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.purple,marginTop:4}},`${(totalPower/1000).toFixed(1)} kW`),
+          React.createElement('div',{style:{fontSize:10,color:T.t2,marginTop:2}},`${d.hvacZones.filter(z=>z.on).length} of ${d.hvacZones.length} zones`)
+        )
+      )
+    );
+  };
+
+  // ── VPP / GRID FLEX ───────────────────────────────────────────────────────
+  const PageVPP=()=>{
+    const maxExp=Math.max(...d.gridExport7d);
+    return React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+      React.createElement(Card,{style:{background:'linear-gradient(135deg,#6366F10A,#0E1420)',border:'1px solid #6366F122'}},
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
+          React.createElement('div',null,
+            React.createElement('span',{style:{...s.tag(T.purple),display:'inline-block',marginBottom:6}},d.vppActive?'● ENROLLED · DEWA VPP':'NOT ENROLLED'),
+            React.createElement('div',{style:{fontSize:14,fontWeight:600}},'Smart Response Program'),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'OpenADR 2.0b · Auto-participate')
+          ),
+          React.createElement('div',{style:{textAlign:'right'}},
+            React.createElement('div',{style:{fontSize:10,color:T.t2}},'Enrolled'),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.purple}},`${d.vppEnrolledKw} kW`)
+          )
+        )
+      ),
+      React.createElement(Card,{style:{padding:0,overflow:'hidden'}},
+        React.createElement('div',{style:{padding:'12px 16px',borderBottom:`1px solid ${T.b1}`,display:'flex',justifyContent:'space-between',alignItems:'center'}},
+          React.createElement('span',{style:{fontSize:12,fontWeight:600}},'Live Grid'),
+          React.createElement('span',{style:{...s.tag(T.green),animation:'pulse 2s infinite'}},'● LIVE')
+        ),
+        React.createElement('div',{style:{padding:14,display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}},
+          React.createElement('div',{style:{textAlign:'center'}},
+            React.createElement('div',{style:s.label},'PRICE'),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:d.gridPrice>0.35?T.red:d.gridPrice>0.28?T.amber:T.green,marginTop:4,animation:'tickerPulse 3s infinite'}},`${d.gridPrice.toFixed(2)}`),
+            React.createElement('div',{style:{fontSize:10,color:T.t2}},'AED / kWh')
+          ),
+          React.createElement('div',{style:{textAlign:'center'}},
+            React.createElement('div',{style:s.label},'FREQUENCY'),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:Math.abs(d.gridFreq-50)<0.1?T.green:T.amber,marginTop:4,animation:'tickerPulse 3s infinite'}},d.gridFreq.toFixed(2)),
+            React.createElement('div',{style:{fontSize:10,color:T.t2}},'Hz')
+          )
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between'}},
+          React.createElement('div',null,
+            React.createElement('div',{style:s.label},'NET METERING'),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.green,marginTop:4}},`+${d.netMeteringBalance.toFixed(2)}`),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'AED credit · DEWA')
+          ),
+          React.createElement('div',{style:{textAlign:'right'}},
+            React.createElement('div',{style:s.label},'VPP EARNINGS'),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.purple,marginTop:4}},`${d.vppEarningsMonth.toFixed(2)}`),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'AED · This month')
+          )
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Active DR Events'),
+        [{type:'Price Alert',time:'14:00–16:00',price:'38 fils/kWh',saving:'AED 8.40',status:'pending',id:1},
+         {type:'Voluntary DR',time:'18:00–20:00',price:'Peak',saving:'AED 4.20',status:'active',id:2}
+        ].map((e,i)=>React.createElement(Card2,{key:e.id,style:{marginBottom:8,border:'1px solid #6366F122'}},
+          React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:4}},
+            React.createElement('span',{style:s.tag(T.purple)},e.type),
+            React.createElement('span',{style:s.tag(T.green)},`+${e.saving}`)
+          ),
+          React.createElement('div',{style:{fontSize:12,marginTop:6}},`${e.time} · ${e.price}`),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2,marginBottom:8}},e.status==='active'?'✓ Auto-participating (EOA)':'⏳ Awaiting approval'),
+          e.status==='pending'&&React.createElement('div',{style:{display:'flex',gap:6}},
+            React.createElement(Btn,{bg:'#10B98122',color:T.green,onClick:()=>{},style:{flex:1,fontSize:11,border:'1px solid #10B98133',borderRadius:6}},'✓ Approve'),
+            React.createElement(Btn,{bg:'#EF444422',color:T.red,onClick:()=>{},style:{flex:1,fontSize:11,border:'1px solid #EF444433',borderRadius:6}},'✗ Reject')
+          )
+        ))
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'VPP Earnings History'),
+        [{date:'03 May',type:'Voluntary DR',dur:'2h',saved:7.80,kwh:4.2},
+         {date:'01 May',type:'Price Alert',dur:'3h',saved:11.20,kwh:6.1},
+         {date:'28 Apr',type:'Emergency',dur:'1h',saved:4.10,kwh:2.3},
+         {date:'25 Apr',type:'Voluntary DR',dur:'2h',saved:6.50,kwh:3.8},
+         {date:'21 Apr',type:'Price Alert',dur:'4h',saved:14.20,kwh:7.5}
+        ].map((h,i)=>React.createElement('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderTop:i>0?`1px solid ${T.b1}`:'none'}},
+          React.createElement('div',null,
+            React.createElement('div',{style:{fontSize:12}},`${h.date} · ${h.type}`),
+            React.createElement('div',{style:{fontSize:11,color:T.t2}},`${h.dur} · ${h.kwh} kWh shed`)
+          ),
+          React.createElement('span',{style:{color:T.green,fontFamily:T.mono,fontSize:13}},`+AED ${h.saved.toFixed(2)}`)
+        ))
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Grid Export · Last 7 Days'),
+        React.createElement('div',{style:{display:'flex',alignItems:'flex-end',gap:6,height:80}},
+          d.gridExport7d.map((v,i)=>React.createElement('div',{key:i,style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}},
+            React.createElement('div',{style:{width:'100%',background:`linear-gradient(180deg,${T.purple},${T.cyan})`,borderRadius:'4px 4px 0 0',height:`${(v/maxExp)*70}px`}}),
+            React.createElement('div',{style:{fontSize:9,fontFamily:T.mono,color:T.t2}},v.toFixed(1))
+          ))
+        ),
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginTop:4,fontSize:9,color:T.t3}},
+          ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>React.createElement('span',{key:d,style:{flex:1,textAlign:'center'}},d))
+        )
+      )
+    );
+  };
+
+  // ── CARBON / ESG ──────────────────────────────────────────────────────────
+  const PageCarbon=()=>{
+    const maxC=Math.max(...d.carbonMonthly);
+    return React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+      React.createElement(Card,{style:{background:'linear-gradient(135deg,#84CC160A,#0E1420)',border:'1px solid #84CC1622',display:'flex',gap:14,alignItems:'center'}},
+        React.createElement(Ring,{pct:Math.min(100,d.co2AvoidedMonth/4*100),color:T.lime,size:90,thick:9,val:d.co2AvoidedMonth,unit:'t',label:'CO₂ AVOIDED'}),
+        React.createElement('div',{style:{flex:1}},
+          React.createElement('div',{style:{fontSize:10,color:T.lime,fontWeight:600,letterSpacing:.5}},'ESG · CARBON INTELLIGENCE'),
+          React.createElement('div',{style:{fontSize:14,fontWeight:600,marginTop:2}},`${d.co2AvoidedMonth} tonnes`),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},`This month · ${d.co2AvoidedTotal}t total`),
+          React.createElement('div',{style:{fontSize:11,color:T.green,marginTop:4}},`= ${d.treeEquiv} trees planted equivalent`)
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Breakdown by Category'),
+        [{l:'Solar Offset',v:1.12,color:T.amber,pct:46},
+         {l:'HVAC Efficiency',v:0.68,color:T.purple,pct:28},
+         {l:'Water Savings',v:0.32,color:T.teal,pct:13},
+         {l:'EV vs Fuel',v:0.33,color:T.green,pct:13}
+        ].map(c=>React.createElement('div',{key:c.l,style:{marginBottom:10}},
+          React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:4}},
+            React.createElement('span',{style:{fontSize:12}},c.l),
+            React.createElement('span',{style:{fontFamily:T.mono,fontSize:11,color:c.color}},`${c.v}t`)
+          ),
+          React.createElement(Bar,{pct:c.pct,color:c.color,h:5})
+        ))
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'ESG Score'),
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}},
+          [{l:'E · Environment',v:d.esgE,color:T.green},
+           {l:'S · Social',v:d.esgS,color:T.blue},
+           {l:'G · Governance',v:d.esgG,color:T.purple}
+          ].map(e=>React.createElement('div',{key:e.l,style:{textAlign:'center'}},
+            React.createElement(Ring,{pct:e.v,color:e.color,size:72,thick:7,val:e.v,unit:'',label:e.l}),
+          ))
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Green Building Certificates'),
+        [{name:'Estidama 2 Pearl',status:'Active',color:T.green,icon:'🏆'},
+         {name:'LEED Silver',status:'In Progress · 72%',color:T.amber,icon:'🥈'},
+         {name:'BREEAM Excellent',status:'Target 2026',color:T.purple,icon:'🎯'}
+        ].map((c,i)=>React.createElement('div',{key:i,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderTop:i>0?`1px solid ${T.b1}`:'none'}},
+          React.createElement('span',{style:{fontSize:18}},c.icon),
+          React.createElement('div',{style:{flex:1}},
+            React.createElement('div',{style:{fontSize:13,fontWeight:500}},c.name),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:1}},c.status)
+          ),
+          React.createElement('span',{style:s.tag(c.color)},c.color===T.green?'✓':c.color===T.amber?'…':'…')
+        ))
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between'}},
+          React.createElement('div',null,
+            React.createElement('div',{style:s.label},'CARBON CREDITS'),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.lime,marginTop:4}},`${d.carbonCreditsAED}`),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'AED · Potential')
+          ),
+          React.createElement('div',{style:{textAlign:'right'}},
+            React.createElement('div',{style:s.label},'TREES'),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.green,marginTop:4}},d.treeEquiv),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'Equivalent')
+          )
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Monthly Trend'),
+        React.createElement('div',{style:{display:'flex',alignItems:'flex-end',gap:6,height:80}},
+          d.carbonMonthly.map((v,i)=>React.createElement('div',{key:i,style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}},
+            React.createElement('div',{style:{width:'100%',background:i===d.carbonMonthly.length-1?T.lime:T.lime+'66',borderRadius:'4px 4px 0 0',height:`${(v/maxC)*70}px`}}),
+            React.createElement('div',{style:{fontSize:9,fontFamily:T.mono,color:T.t2}},v.toFixed(1))
+          ))
+        ),
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginTop:4,fontSize:9,color:T.t3}},
+          ['Dec','Jan','Feb','Mar','Apr','May'].map(m=>React.createElement('span',{key:m,style:{flex:1,textAlign:'center'}},m))
+        )
+      )
+    );
+  };
+
+  // ── LIFESTYLE ─────────────────────────────────────────────────────────────
+  const PageLifestyle=()=>{
+    const aq=d.airQuality;
+    const scenes=[
+      {id:'morning',label:'Good Morning',icon:'🌅',color:T.amber},
+      {id:'work',label:'Work Mode',icon:'💼',color:T.blue},
+      {id:'night',label:'Good Night',icon:'🌙',color:T.purple},
+      {id:'movie',label:'Movie',icon:'🎬',color:T.pink},
+      {id:'guest',label:'Guest',icon:'👥',color:T.green},
+      {id:'vacation',label:'Vacation',icon:'✈️',color:T.teal},
+    ];
+    // Occupancy heatmap data
+    const heatmap=Array.from({length:7},(_,day)=>Array.from({length:24},(_,h)=>{
+      const peak=h>=7&&h<=9?.7:h>=18&&h<=22?.85:h>=23||h<6?.4:.25;
+      return Math.min(1,peak+(Math.sin(day*1.3+h*0.7)*0.15));
+    }));
+    return React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+      React.createElement(Card,{style:{background:'linear-gradient(135deg,#EC48990A,#0E1420)',border:'1px solid #EC489922',display:'flex',gap:14,alignItems:'center'}},
+        React.createElement(Ring,{pct:d.wellnessScore,color:T.pink,size:90,thick:9,val:d.wellnessScore,unit:'',label:'WELLNESS'}),
+        React.createElement('div',{style:{flex:1}},
+          React.createElement('div',{style:{fontSize:10,color:T.pink,fontWeight:600,letterSpacing:.5}},'SMART LIFESTYLE & WELLNESS'),
+          React.createElement('div',{style:{fontSize:14,fontWeight:600,marginTop:2}},'Wellness Score 86/100'),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'Air · Comfort · Light · Activity'),
+          React.createElement('div',{style:{fontSize:11,color:T.green,marginTop:4}},'↑ 4 pts from last week')
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Air Quality Monitor'),
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10}},
+          [{l:'PM2.5',v:aq.pm25,u:'µg/m³',rate:'Good',color:T.green},
+           {l:'CO₂',v:aq.co2Ppm,u:'ppm',rate:'Excellent',color:T.lime},
+           {l:'VOC',v:aq.voc,u:'ppb',rate:'Good',color:T.green},
+           {l:'HUMIDITY',v:aq.humidity,u:'%',rate:'Optimal',color:T.blue}
+          ].map(m=>React.createElement('div',{key:m.l,style:{background:T.s3,borderRadius:8,padding:12}},
+            React.createElement('div',{style:{fontSize:9,color:T.t2,letterSpacing:.5,fontWeight:600}},m.l),
+            React.createElement('div',{style:{display:'flex',alignItems:'baseline',gap:4,marginTop:4}},
+              React.createElement('span',{style:{fontFamily:T.mono,fontSize:20,fontWeight:700,color:m.color}},m.v),
+              React.createElement('span',{style:{fontSize:10,color:T.t3}},m.u)
+            ),
+            React.createElement('span',{style:{...s.tag(m.color),fontSize:9,marginTop:4,display:'inline-block'}},m.rate)
+          ))
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Quick Scenes'),
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}},
+          scenes.map(sc=>React.createElement('button',{key:sc.id,onClick:()=>setScene(sc.id),style:{padding:'14px 6px',borderRadius:10,border:`1px solid ${d.activeScene===sc.id?sc.color:sc.color+'33'}`,background:d.activeScene===sc.id?sc.color+'22':sc.color+'08',cursor:'pointer',textAlign:'center',fontFamily:T.font}},
+            React.createElement('div',{style:{fontSize:22,marginBottom:4}},sc.icon),
+            React.createElement('div',{style:{fontSize:10,color:sc.color,fontWeight:600}},sc.label)
+          ))
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:4}},'Occupancy Heatmap'),
+        React.createElement('div',{style:{fontSize:10,color:T.t2,marginBottom:10}},'7 days · 24 hours · intensity = occupancy'),
+        React.createElement('div',{style:{display:'flex',gap:3}},
+          React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:2,paddingTop:14}},
+            [0,6,12,18,23].map(h=>React.createElement('div',{key:h,style:{fontSize:8,color:T.t3,height:Math.floor((24-1)*3/4)/4-1,display:'flex',alignItems:'center'}},`${h}h`))
+          ),
+          React.createElement('div',{style:{flex:1}},
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-around',marginBottom:2}},
+              ['M','T','W','T','F','S','S'].map((d,i)=>React.createElement('span',{key:i,style:{fontSize:9,color:T.t3,flex:1,textAlign:'center'}},d))
+            ),
+            React.createElement('div',{style:{display:'flex',gap:2}},
+              heatmap.map((day,di)=>React.createElement('div',{key:di,style:{flex:1,display:'flex',flexDirection:'column',gap:1}},
+                day.map((v,hi)=>React.createElement('div',{key:hi,style:{height:4,background:`rgba(236,72,153,${v.toFixed(2)})`,borderRadius:1}}))
+              ))
+            )
+          )
+        ),
+        React.createElement('div',{style:{display:'flex',gap:6,alignItems:'center',marginTop:10}},
+          React.createElement('span',{style:{fontSize:9,color:T.t3}},'low'),
+          React.createElement('div',{style:{flex:1,height:5,background:`linear-gradient(90deg,rgba(236,72,153,0.1),rgba(236,72,153,1))`,borderRadius:3}}),
+          React.createElement('span',{style:{fontSize:9,color:T.t3}},'high')
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Security Status'),
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}},
+          [{l:'CAMERAS',v:'6/6',sub:'online',color:T.green,icon:'📷'},
+           {l:'LOCKS',v:'All',sub:'secure',color:T.green,icon:'🔒'},
+           {l:'MOTION',v:'0',sub:'alerts',color:T.t2,icon:'👁'}
+          ].map(it=>React.createElement('div',{key:it.l,style:{textAlign:'center',background:T.s3,borderRadius:8,padding:10}},
+            React.createElement('div',{style:{fontSize:18,marginBottom:4}},it.icon),
+            React.createElement('div',{style:{fontFamily:T.mono,fontSize:16,fontWeight:700,color:it.color}},it.v),
+            React.createElement('div',{style:{fontSize:9,color:T.t2,letterSpacing:.4}},`${it.l} · ${it.sub}`)
+          ))
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Family Members'),
+        [{name:'Hossain Ahmed',role:'Admin',access:'Full',color:T.cyan,initial:'H'},
+         {name:'Fatima Ahmed',role:'Spouse',access:'Full',color:T.pink,initial:'F'},
+         {name:'Ali Ahmed',role:'Child',access:'Limited',color:T.blue,initial:'A'},
+         {name:'Sara Ahmed',role:'Child',access:'Limited',color:T.green,initial:'S'},
+         {name:'Guest WiFi',role:'Guest',access:'Read-only',color:T.t3,initial:'G'}
+        ].map((m,i)=>React.createElement('div',{key:i,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderTop:i>0?`1px solid ${T.b1}`:'none'}},
+          React.createElement('div',{style:{width:34,height:34,borderRadius:'50%',background:m.color+'33',display:'flex',alignItems:'center',justifyContent:'center',color:m.color,fontWeight:700,fontSize:14}},m.initial),
+          React.createElement('div',{style:{flex:1}},
+            React.createElement('div',{style:{fontSize:13,fontWeight:500}},m.name),
+            React.createElement('div',{style:{fontSize:11,color:T.t2}},m.role)
+          ),
+          React.createElement('span',{style:s.tag(m.access==='Full'?T.green:m.access==='Limited'?T.amber:T.t3)},m.access)
+        ))
+      )
+    );
+  };
+
+  // ── COMMUNITY ─────────────────────────────────────────────────────────────
+  const PageCommunity=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+    React.createElement(Card,{style:{background:'linear-gradient(135deg,#84CC160A,#0E1420)',border:'1px solid #84CC1622',display:'flex',gap:14,alignItems:'center'}},
+      React.createElement('div',{style:{textAlign:'center',padding:'6px 14px',background:T.lime+'22',borderRadius:14,border:`1px solid ${T.lime}55`}},
+        React.createElement('div',{style:{fontSize:10,color:T.lime,letterSpacing:.5,fontWeight:600}},'RANK'),
+        React.createElement('div',{style:{fontFamily:T.mono,fontSize:28,fontWeight:700,color:T.lime}},`#${d.communityRank}`),
+        React.createElement('div',{style:{fontSize:10,color:T.t2,marginTop:2}},`of ${d.communityTotal}`)
+      ),
+      React.createElement('div',{style:{flex:1}},
+        React.createElement('div',{style:{fontSize:10,color:T.lime,fontWeight:600,letterSpacing:.5}},'COMMUNITY GRID · AL BARSHA VILLAS'),
+        React.createElement('div',{style:{fontSize:14,fontWeight:600,marginTop:2}},'Green Score 78/100'),
+        React.createElement('div',{style:{marginTop:6}},React.createElement(Bar,{pct:78,color:T.lime,h:5})),
+        React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:4}},'Top 12% in your area')
+      )
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Community Solar Today'),
+      React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}},
+        React.createElement('div',null,
+          React.createElement('div',{style:s.label},'TOTAL SHARED'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.amber,marginTop:4}},`${d.communitySharedKwh} kWh`)
+        ),
+        React.createElement('div',{style:{textAlign:'right'}},
+          React.createElement('div',{style:s.label},'LIVE'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.green,marginTop:4,animation:'tickerPulse 3s infinite'}},`${d.communitySharedLiveKw} kW`)
+        )
+      ),
+      React.createElement('div',{style:{display:'flex',alignItems:'flex-end',gap:3,height:50,marginTop:14}},
+        Array.from({length:24},(_,i)=>{
+          const v=i<6||i>19?0:Math.max(.2,6*Math.sin(Math.PI*(i-6)/13));
+          return React.createElement('div',{key:i,style:{flex:1,background:i===Math.min(23,new Date().getHours())?T.green:T.amber+'66',height:`${(v/6)*45}px`,minHeight:1,borderRadius:'2px 2px 0 0'}});
+        })
+      )
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'P2P Trading'),
+      React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}},
+        React.createElement('div',{style:{textAlign:'center',background:T.s3,borderRadius:8,padding:10}},
+          React.createElement('div',{style:s.label},'EARNED'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:16,fontWeight:700,color:T.green,marginTop:4}},`${d.p2pCreditsAED}`),
+          React.createElement('div',{style:{fontSize:9,color:T.t3}},'AED')
+        ),
+        React.createElement('div',{style:{textAlign:'center',background:T.s3,borderRadius:8,padding:10}},
+          React.createElement('div',{style:s.label},'SOLD'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:16,fontWeight:700,color:T.cyan,marginTop:4}},`${d.p2pKwh}`),
+          React.createElement('div',{style:{fontSize:9,color:T.t3}},'kWh')
+        ),
+        React.createElement('div',{style:{textAlign:'center',background:T.s3,borderRadius:8,padding:10}},
+          React.createElement('div',{style:s.label},'BUYERS'),
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:16,fontWeight:700,color:T.purple,marginTop:4}},d.p2pBuyers),
+          React.createElement('div',{style:{fontSize:9,color:T.t3}},'neighbors')
+        )
+      ),
+      React.createElement(Btn,{bg:T.cyan,color:'#000',onClick:()=>{},style:{width:'100%',marginTop:12,fontSize:12,borderRadius:8}},'Open P2P Marketplace →')
+    ),
+    React.createElement(Card,null,
+      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Leaderboard'),
+      d.leaderboard.map((l,i)=>React.createElement('div',{key:l.rank,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderTop:i>0?`1px solid ${T.b1}`:'none',background:l.you?T.cyan+'08':'transparent',borderRadius:l.you?6:0,paddingLeft:l.you?8:0,paddingRight:l.you?8:0}},
+        React.createElement('span',{style:{fontFamily:T.mono,fontSize:14,fontWeight:700,color:l.rank<=3?[T.amber,'#C0C0C0','#CD7F32'][l.rank-1]:T.t2,width:24}},`#${l.rank}`),
+        React.createElement('div',{style:{flex:1}},
+          React.createElement('div',{style:{fontSize:13,fontWeight:l.you?600:500,color:l.you?T.cyan:T.t1}},l.name+(l.you?' (you)':'')),
+          React.createElement('div',{style:{fontSize:11,color:T.t2}},`Saved AED ${l.saved}`)
+        ),
+        React.createElement('div',{style:{textAlign:'right'}},
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:13,color:T.lime,fontWeight:700}},l.score),
+          React.createElement('div',{style:{fontSize:9,color:T.t3}},'score')
+        )
+      ))
+    ),
+    React.createElement(Card,{style:{background:'linear-gradient(135deg,#10B98111,#0E1420)',border:'1px solid #10B98133'}},
+      React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}},
+        React.createElement('div',null,
+          React.createElement('span',{style:{...s.tag(T.green),display:'inline-block',marginBottom:4}},'● COMMUNITY CHALLENGE'),
+          React.createElement('div',{style:{fontSize:14,fontWeight:600}},'May Net Zero Challenge'),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'Reduce grid import to 0 for 7 consecutive days')
+        ),
+        React.createElement('div',{style:{textAlign:'right'}},
+          React.createElement('div',{style:{fontFamily:T.mono,fontSize:22,fontWeight:700,color:T.green}},`${d.challengeProgress}%`)
+        )
+      ),
+      React.createElement(Bar,{pct:d.challengeProgress,color:T.green,h:6}),
+      React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:8}},'4 of 7 zero-import days achieved · 234 AED prize pool')
+    )
+  );
 
   // ── DEVICE LIBRARY ────────────────────────────────────────────────────────
   const PageLibrary=()=>{
@@ -1016,7 +1797,7 @@ function App() {
             ),
             React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:1}},`${m.sub} · ${m.models.length} model${m.models.length!==1?'s':''}`),
             React.createElement('div',{style:{display:'flex',gap:4,marginTop:4,flexWrap:'wrap'}},
-              React.createElement('span',{style:{...s.tag(m.color),fontSize:9}},m.cat),
+              React.createElement('span',{style:{...s.tag(catColors[m.cat]||m.color),fontSize:9}},m.cat),
               React.createElement('span',{style:{...s.tag(T.purple),fontSize:9,maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},m.protocol.split('+')[0].trim()),
               React.createElement('span',{style:{...s.tag(T.cyan),fontSize:9}},m.region)
             )
@@ -1126,99 +1907,160 @@ function App() {
   );
 
   // ── PROFILE ───────────────────────────────────────────────────────────────
-  const PageProfile=()=>React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
-    React.createElement(Card,{style:{display:'flex',gap:14,alignItems:'center'}},
-      React.createElement('div',{style:{width:52,height:52,borderRadius:'50%',background:'linear-gradient(135deg,#00D4A8,#6366F1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,fontWeight:700,color:'#000'}},user.name.charAt(0).toUpperCase()),
-      React.createElement('div',null,
-        React.createElement('div',{style:{fontSize:16,fontWeight:600}},user.name),
-        React.createElement('div',{style:{fontSize:12,color:T.t2}},user.email),
-        user.demo&&React.createElement('div',{style:{fontSize:11,color:T.amber,marginTop:2}},'Demo Mode — All features unlocked'),
-        React.createElement('span',{style:{...s.tag(T.cyan),marginTop:4,display:'inline-block'}},'Elite · 7-Day Trial')
-      )
-    ),
-    React.createElement(Card,null,
-      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Subscription'),
-      React.createElement('div',{style:{background:'linear-gradient(135deg,#00D4A811,#6366F111)',border:'1px solid #00D4A822',borderRadius:8,padding:12,marginBottom:10}},
-        React.createElement('div',{style:{fontSize:13,fontWeight:600}},'Elite Plan · AED 149/month'),
-        React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'All features · 5 properties · Unlimited family'),
-        React.createElement('div',{style:{fontSize:11,color:T.cyan,marginTop:4}},'7-day trial active')
-      ),
-      [['Dashboard + Monitoring','✓'],['Hossain Controller','✓'],['AI Optimizer + Agents','✓'],['Circuit Architect','✓'],['Multi-property (up to 5)','✓'],['API Access','✓']].map(([f,v])=>
-        React.createElement('div',{key:f,style:{display:'flex',justifyContent:'space-between',padding:'5px 0',borderTop:`1px solid ${T.b1}`,fontSize:12}},
-          React.createElement('span',null,f),React.createElement('span',{style:{color:T.green}},v)
-        )
-      )
-    ),
-    React.createElement(Card,null,
-      React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Settings'),
-      [['Currency',user.country==='India'?'INR':'AED'],['Utility',user.country==='UAE'?'DEWA · Dubai':user.country==='India'?'MSEDCL':'Local Utility'],['Language','English'],['Region',user.country||'UAE']].map(([k,v])=>
-        React.createElement('div',{key:k,style:{display:'flex',justifyContent:'space-between',padding:'7px 0',borderTop:`1px solid ${T.b1}`,fontSize:12}},
-          React.createElement('span',{style:{color:T.t2}},k),React.createElement('span',null,v)
-        )
-      )
-    ),
-    React.createElement(Card,null,
-      React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},
+  const PageProfile=()=>{
+    const statusColors={connected:T.green,connecting:T.amber,error:T.red,disconnected:T.t3};
+    const statusLabels={connected:'● Connected',connecting:'◌ Connecting…',error:'✗ Error',disconnected:'○ Disconnected'};
+    return React.createElement('div',{className:'fade-up',style:{display:'flex',flexDirection:'column',gap:12}},
+      React.createElement(Card,{style:{display:'flex',gap:14,alignItems:'center'}},
+        React.createElement('div',{style:{width:52,height:52,borderRadius:'50%',background:'linear-gradient(135deg,#00D4A8,#6366F1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,fontWeight:700,color:'#000'}},user.name.charAt(0).toUpperCase()),
         React.createElement('div',null,
-          React.createElement('div',{style:{fontSize:12,fontWeight:600}},'OpSys Telemetry'),
-          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'Sending health data to OpSys support team')
+          React.createElement('div',{style:{fontSize:16,fontWeight:600}},user.name),
+          React.createElement('div',{style:{fontSize:12,color:T.t2}},user.email),
+          user.demo&&React.createElement('div',{style:{fontSize:11,color:T.amber,marginTop:2}},'Demo Mode — All features unlocked'),
+          React.createElement('span',{style:{...s.tag(T.cyan),marginTop:4,display:'inline-block'}},'Elite · 7-Day Trial')
+        )
+      ),
+      // HOME ASSISTANT INTEGRATION
+      React.createElement(Card,{style:{border:`1px solid ${statusColors[ha.status]}33`}},
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
+          React.createElement('div',null,
+            React.createElement('div',{style:{fontSize:12,fontWeight:600,display:'flex',alignItems:'center',gap:6}},
+              React.createElement('span',{style:{fontSize:16}},'🏠'),'Home Assistant'),
+            React.createElement('div',{style:{fontSize:10,color:T.t2,marginTop:2}},'Live WebSocket integration')
+          ),
+          React.createElement('span',{style:{...s.tag(statusColors[ha.status]),fontSize:10}},statusLabels[ha.status])
         ),
-        React.createElement(Toggle,{on:true,onClick:()=>{}})
-      )
-    ),
-    React.createElement(Btn,{bg:'#EF444411',color:T.red,onClick:()=>setUser(null),style:{border:'1px solid #EF444422',borderRadius:10,padding:'10px',fontSize:12,width:'100%'}},'Sign Out')
-  );
+        ha.error&&React.createElement('div',{style:{fontSize:11,color:T.red,padding:'6px 10px',background:'#EF444411',borderRadius:6,marginBottom:8}},`Error: ${ha.error}`),
+        React.createElement('div',{style:{fontSize:10,color:T.t2,marginBottom:4}},'HA URL (e.g. homeassistant.local:8123)'),
+        React.createElement(Input,{value:haConfig.url,onChange:e=>setHaConfig(c=>({...c,url:e.target.value})),placeholder:'http://homeassistant.local:8123',style:{marginBottom:8}}),
+        React.createElement('div',{style:{fontSize:10,color:T.t2,marginBottom:4}},'Long-Lived Access Token'),
+        React.createElement(Input,{value:haConfig.token,onChange:e=>setHaConfig(c=>({...c,token:e.target.value})),placeholder:'Profile > Security > Create Token',type:'password',style:{marginBottom:10}}),
+        React.createElement('div',{style:{display:'flex',gap:8,marginBottom:12}},
+          ha.status==='connected'?
+            React.createElement(Btn,{bg:'#EF444422',color:T.red,onClick:()=>ha.disconnect(),style:{flex:1,fontSize:12,border:'1px solid #EF444433',borderRadius:8}},'Disconnect')
+          :React.createElement(Btn,{bg:T.cyan,color:'#000',onClick:()=>ha.connect(),disabled:ha.status==='connecting',style:{flex:1,fontSize:12,borderRadius:8}},
+            ha.status==='connecting'?'Connecting…':'Connect to HA →'
+          )
+        ),
+        React.createElement('div',{style:{fontSize:11,fontWeight:600,marginBottom:6,marginTop:4,color:T.t2}},'Entity Map'),
+        React.createElement('div',{style:{maxHeight:260,overflowY:'auto'}},
+          Object.entries(haConfig.map).map(([k,v])=>{
+            const cur=ha.entities[v];
+            return React.createElement('div',{key:k,style:{display:'flex',alignItems:'center',gap:6,padding:'5px 0',borderTop:`1px solid ${T.b1}`,fontSize:11}},
+              React.createElement('span',{style:{color:T.t2,width:80,flexShrink:0}},k),
+              React.createElement('input',{value:v,onChange:e=>setHaConfig(c=>({...c,map:{...c.map,[k]:e.target.value}})),style:{...s.input,fontSize:10,padding:'4px 8px',flex:1}}),
+              cur&&React.createElement('span',{style:{...s.tag(T.green),fontSize:9,flexShrink:0,maxWidth:80,overflow:'hidden',textOverflow:'ellipsis'}},cur.state)
+            );
+          })
+        ),
+        ha.status==='connected'&&React.createElement('div',{style:{fontSize:10,color:T.green,marginTop:8,padding:'6px 10px',background:'#10B98111',borderRadius:6,border:'1px solid #10B98133'}},
+          `✓ Receiving live data · ${Object.keys(ha.entities).length} total entities indexed`
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Subscription'),
+        React.createElement('div',{style:{background:'linear-gradient(135deg,#00D4A811,#6366F111)',border:'1px solid #00D4A822',borderRadius:8,padding:12,marginBottom:10}},
+          React.createElement('div',{style:{fontSize:13,fontWeight:600}},'Elite Plan · AED 149/month'),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'All features · 5 properties · Unlimited family'),
+          React.createElement('div',{style:{fontSize:11,color:T.cyan,marginTop:4}},'7-day trial active')
+        ),
+        [['Dashboard + Monitoring','✓'],['Hossain Controller','✓'],['AI Optimizer + Agents','✓'],['Circuit Architect','✓'],['Water + HVAC + VPP','✓'],['Carbon + Lifestyle + Community','✓'],['Home Assistant Integration','✓'],['Multi-property (up to 5)','✓'],['API Access','✓']].map(([f,v])=>
+          React.createElement('div',{key:f,style:{display:'flex',justifyContent:'space-between',padding:'5px 0',borderTop:`1px solid ${T.b1}`,fontSize:12}},
+            React.createElement('span',null,f),React.createElement('span',{style:{color:T.green}},v)
+          )
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:10}},'Settings'),
+        [['Currency',user.country==='India'?'INR':'AED'],['Utility',user.country==='UAE'?'DEWA · Dubai':user.country==='India'?'MSEDCL':'Local Utility'],['Language','English'],['Region',user.country||'UAE']].map(([k,v])=>
+          React.createElement('div',{key:k,style:{display:'flex',justifyContent:'space-between',padding:'7px 0',borderTop:`1px solid ${T.b1}`,fontSize:12}},
+            React.createElement('span',{style:{color:T.t2}},k),React.createElement('span',null,v)
+          )
+        )
+      ),
+      React.createElement(Card,null,
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},
+          React.createElement('div',null,
+            React.createElement('div',{style:{fontSize:12,fontWeight:600}},'OpSys Telemetry'),
+            React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},'Sending health data to OpSys support team')
+          ),
+          React.createElement(Toggle,{on:true,onClick:()=>{}})
+        )
+      ),
+      React.createElement(Btn,{bg:'#EF444411',color:T.red,onClick:()=>setUser(null),style:{border:'1px solid #EF444422',borderRadius:10,padding:'10px',fontSize:12,width:'100%'}},'Sign Out')
+    );
+  };
 
-  const pages={dashboard:React.createElement(PageDashboard),controller:React.createElement(PageController),circuit:React.createElement(PageCircuit),layout:React.createElement(PageLayout),optimizer:React.createElement(PageOptimizer),forecast:React.createElement(PageForecast),scheduler:React.createElement(PageScheduler),grid:React.createElement(PageGrid),billing:React.createElement(PageBilling),library:React.createElement(PageLibrary),agents:React.createElement(PageAgents),alerts:React.createElement(PageAlerts),profile:React.createElement(PageProfile)};
+  const pages={
+    dashboard:React.createElement(PageDashboard),
+    controller:React.createElement(PageController),
+    water:React.createElement(PageWater),
+    hvac:React.createElement(PageHVAC),
+    vpp:React.createElement(PageVPP),
+    circuit:React.createElement(PageCircuit),
+    layout:React.createElement(PageLayout),
+    optimizer:React.createElement(PageOptimizer),
+    forecast:React.createElement(PageForecast),
+    scheduler:React.createElement(PageScheduler),
+    billing:React.createElement(PageBilling),
+    library:React.createElement(PageLibrary),
+    carbon:React.createElement(PageCarbon),
+    lifestyle:React.createElement(PageLifestyle),
+    community:React.createElement(PageCommunity),
+    agents:React.createElement(PageAgents),
+    alerts:React.createElement(PageAlerts),
+    profile:React.createElement(PageProfile)
+  };
 
   return React.createElement('div',{style:{height:'100vh',display:'flex',flexDirection:'column',background:T.bg,overflow:'hidden'}},
     // TOP BAR
-    React.createElement('div',{style:{background:T.s1,borderBottom:`1px solid ${T.b1}`,padding:'10px 16px',display:'flex',alignItems:'center',gap:12,flexShrink:0,paddingTop:`max(10px, env(safe-area-inset-top))`}},
+    React.createElement('div',{style:{background:T.s1,borderBottom:`1px solid ${T.b1}`,padding:'10px 16px',display:'flex',alignItems:'center',gap:10,flexShrink:0,paddingTop:`max(10px, env(safe-area-inset-top))`}},
       React.createElement('button',{onClick:()=>setSidebar(!sidebar),style:{background:'none',border:'none',color:T.t1,fontSize:20,cursor:'pointer',padding:4,lineHeight:1}},'☰'),
-      React.createElement('div',{style:{flex:1}},
+      React.createElement('div',{style:{flex:1,minWidth:0}},
         React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8}},
           React.createElement('span',{style:{fontSize:16,fontWeight:700,color:T.cyan,letterSpacing:-.5}},'OpLiv'),
-          React.createElement('span',{style:{fontSize:13,color:T.t2}},`/ ${nav.find(n=>n.id===page)?.label}`)
+          React.createElement('span',{style:{fontSize:13,color:T.t2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},`/ ${nav.find(n=>n.id===page)?.label}`)
         )
       ),
-      d.hitl.length>0&&React.createElement('button',{onClick:()=>go('agents'),style:{background:'#6366F122',border:'1px solid #6366F133',borderRadius:20,padding:'4px 10px',color:T.purple,fontSize:11,cursor:'pointer',fontFamily:T.font,animation:'pulse 2s infinite'}},`◆ ${d.hitl.length} pending`),
+      React.createElement(HAStatusDot,{status:ha.status}),
+      d.hitl.length>0&&React.createElement('button',{onClick:()=>go('agents'),style:{background:'#6366F122',border:'1px solid #6366F133',borderRadius:20,padding:'4px 8px',color:T.purple,fontSize:10,cursor:'pointer',fontFamily:T.font,animation:'pulse 2s infinite'}},`◆ ${d.hitl.length}`),
       React.createElement('div',{style:{width:7,height:7,borderRadius:'50%',background:T.green,animation:'pulse 3s infinite'}})
     ),
 
     // SIDEBAR
     sidebar&&React.createElement('div',{style:{position:'fixed',inset:0,zIndex:200,display:'flex'}},
-      React.createElement('div',{style:{width:220,background:T.s1,borderRight:`1px solid ${T.b1}`,display:'flex',flexDirection:'column',paddingTop:`max(0px,env(safe-area-inset-top))`}},
+      React.createElement('div',{style:{width:230,background:T.s1,borderRight:`1px solid ${T.b1}`,display:'flex',flexDirection:'column',paddingTop:`max(0px,env(safe-area-inset-top))`}},
         React.createElement('div',{style:{padding:'16px 16px 14px',borderBottom:`1px solid ${T.b1}`}},
           React.createElement('div',{style:{fontSize:22,fontWeight:700,color:T.cyan,letterSpacing:-1}},'OpLiv'),
-          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:2}},`${user.name}'s Villa`)
+          React.createElement('div',{style:{fontSize:10,color:T.t2,marginTop:1,letterSpacing:.5}},'INTELLIGENT LIVING'),
+          React.createElement('div',{style:{fontSize:11,color:T.t2,marginTop:6}},`${user.name}'s Villa`)
         ),
         React.createElement('div',{style:{flex:1,overflowY:'auto',padding:'8px 0'}},
-          nav.map(n=>React.createElement('button',{key:n.id,onClick:()=>go(n.id),style:{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 16px',background:page===n.id?T.s2:'transparent',border:'none',cursor:'pointer',color:page===n.id?T.cyan:T.t2,fontSize:13,textAlign:'left',borderLeft:page===n.id?`2px solid ${T.cyan}`:'2px solid transparent',fontFamily:T.font,transition:'all .15s'}},
-            React.createElement('span',{style:{width:20,textAlign:'center',fontSize:15}},n.icon),
+          nav.map(n=>React.createElement('button',{key:n.id,onClick:()=>go(n.id),style:{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 16px',background:page===n.id?T.s2:'transparent',border:'none',cursor:'pointer',color:page===n.id?T.cyan:T.t2,fontSize:13,textAlign:'left',borderLeft:page===n.id?`2px solid ${T.cyan}`:'2px solid transparent',fontFamily:T.font,transition:'all .15s'}},
+            React.createElement('span',{style:{width:20,textAlign:'center',fontSize:14}},n.icon),
             n.label,
             n.id==='agents'&&d.hitl.length>0&&React.createElement('span',{style:{marginLeft:'auto',background:T.purple,color:'white',borderRadius:10,fontSize:10,padding:'1px 6px'}},d.hitl.length),
-            n.id==='library'&&connDone.length>0&&React.createElement('span',{style:{marginLeft:'auto',background:T.green,color:'white',borderRadius:10,fontSize:10,padding:'1px 6px'}},connDone.length)
+            n.id==='library'&&connDone.length>0&&React.createElement('span',{style:{marginLeft:'auto',background:T.green,color:'white',borderRadius:10,fontSize:10,padding:'1px 6px'}},connDone.length),
+            n.id==='profile'&&ha.status==='connected'&&React.createElement('span',{style:{marginLeft:'auto',background:T.green,color:'white',borderRadius:10,fontSize:9,padding:'1px 6px'}},'HA')
           ))
         ),
-        React.createElement('div',{style:{padding:'12px 16px',borderTop:`1px solid ${T.b1}`,fontSize:11,color:T.t3}},'OpLiv Elite · v4.0 · Demo')
+        React.createElement('div',{style:{padding:'12px 16px',borderTop:`1px solid ${T.b1}`,fontSize:11,color:T.t3}},'OpLiv Elite · v5.0 · Demo')
       ),
       React.createElement('div',{style:{flex:1,background:'rgba(0,0,0,0.65)'},onClick:()=>setSidebar(false)})
     ),
 
     // CONTENT
-    React.createElement('div',{style:{flex:1,overflowY:'auto',padding:'12px 16px 90px',maxWidth:620,margin:'0 auto',width:'100%'}},
+    React.createElement('div',{style:{flex:1,overflowY:'auto',padding:'12px 16px 100px',maxWidth:620,margin:'0 auto',width:'100%'}},
       pages[page]||React.createElement(PageDashboard,null)
     ),
 
     // BOTTOM NAV
-    React.createElement('div',{style:{background:T.s1,borderTop:`1px solid ${T.b1}`,display:'flex',flexShrink:0,paddingBottom:`max(6px,env(safe-area-inset-bottom))`}},
-      [{id:'dashboard',icon:'⌂',label:'Home'},{id:'controller',icon:'◈',label:'Control'},{id:'optimizer',icon:'◉',label:'Optimize'},{id:'agents',icon:'◆',label:'Agents'},{id:'library',icon:'⊙',label:'Devices'}]
-        .map(n=>React.createElement('button',{key:n.id,onClick:()=>go(n.id),style:{flex:1,background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:2,padding:'7px 0',position:'relative'}},
-          React.createElement('span',{style:{fontSize:18,color:page===n.id?T.cyan:T.t3}},n.icon),
-          React.createElement('span',{style:{fontSize:9,color:page===n.id?T.cyan:T.t3}},n.label),
-          n.id==='agents'&&d.hitl.length>0&&React.createElement('span',{style:{position:'absolute',top:5,right:'28%',width:7,height:7,borderRadius:'50%',background:T.purple}}),
-          n.id==='library'&&connDone.length>0&&React.createElement('span',{style:{position:'absolute',top:5,right:'28%',width:7,height:7,borderRadius:'50%',background:T.green}})
-        ))
+    React.createElement('div',{className:'no-scrollbar',style:{background:T.s1,borderTop:`1px solid ${T.b1}`,display:'flex',flexShrink:0,paddingBottom:`max(6px,env(safe-area-inset-bottom))`,overflowX:'auto'}},
+      bottomNav.map(n=>React.createElement('button',{key:n.id,onClick:()=>go(n.id),style:{flex:'0 0 auto',minWidth:64,background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:2,padding:'7px 8px',position:'relative'}},
+        React.createElement('span',{style:{fontSize:18,color:page===n.id?T.cyan:T.t3}},n.icon),
+        React.createElement('span',{style:{fontSize:9,color:page===n.id?T.cyan:T.t3,whiteSpace:'nowrap'}},n.label),
+        n.id==='agents'&&d.hitl.length>0&&React.createElement('span',{style:{position:'absolute',top:5,right:14,width:7,height:7,borderRadius:'50%',background:T.purple}})
+      ))
     )
   );
 }
